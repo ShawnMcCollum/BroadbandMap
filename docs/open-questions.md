@@ -65,7 +65,7 @@ Answered in [#12](https://github.com/ShawnMcCollum/BroadbandMap/issues/12).
 | 1 | Which 100/20 flag (`any`, `wired`, `terrestrial`) does the map show by default? | **Wired.** It is what most people mean by "broadband". The other flags can be selected. | #2, #4 |
 | 2 | The file cannot tell *unserved* (<25/3) apart from *underserved* (25/3–100/20). How should the map be labelled? | Label the map **"Served / Not served (100/20)"**. The threshold question stays open (above). | #4 |
 | 3 | The file is a `D25` filing but is stamped `29sep2026`. What is the release called? | Call it the **December 2025** data, as the FCC does, and note the processing date. | [README](../README.md#data-source) |
-| 4 | The data has no geometry. Where do block and county boundaries come from? | Boundary data is a separate download and is now a **blocking requirement** for the ETL. | [#9](https://github.com/ShawnMcCollum/BroadbandMap/issues/9) blocks #2 |
+| 4 | The data has no geometry. Where do block and county boundaries come from? | Boundary data is a separate download and is now a **blocking requirement** for the ETL. **Census TIGER/Line 2020**, fetched by a script. | [ADR 0005](decisions/0005-census-tiger-2020-boundaries.md), [#9](https://github.com/ShawnMcCollum/BroadbandMap/issues/9) |
 | 5 | Keep all ~4.5M location rows, or only rollups? | **Keep every location**, and offer both summary and full-data views. | [#10](https://github.com/ShawnMcCollum/BroadbandMap/issues/10) |
 
 ### Tooling
