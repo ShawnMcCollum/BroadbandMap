@@ -1,7 +1,8 @@
 # BroadbandMap
 
 An interactive map and analysis tool for FCC broadband availability data,
-built with TypeScript, Python, and PostgreSQL/PostGIS.
+built with Python (Django, Celery, Streamlit), TypeScript (React), and
+PostgreSQL/PostGIS.
 
 > **Status:** Early development. The first milestone is an end-to-end view of
 > broadband Served/Unserved status for Ohio. See
@@ -31,6 +32,9 @@ Architectural and scope decisions are recorded in
 [docs/decisions](docs/decisions/):
 
 - [0001 — Start with Served/Unserved data for Ohio](docs/decisions/0001-start-with-ohio-served-unserved.md)
+- [0002 — Django for the API and data model](docs/decisions/0002-django-for-api-and-data-model.md)
+- [0003 — Celery for background data loads](docs/decisions/0003-celery-for-background-loads.md)
+- [0004 — Streamlit for an analyst dashboard](docs/decisions/0004-streamlit-analyst-dashboard.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

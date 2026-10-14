@@ -25,30 +25,17 @@ underserved below 100/20) are a separate question.
 *Impact:* only the map's labels and explanatory text. The data can only
 express 100/20 either way.
 
-### Which Python framework serves the API?
-
-The API is now written in Python (see project-level question P8 below), which
-changes the TypeScript API planned in #1 and #3. The candidates are Django
-(with GeoDjango and Django REST Framework), which fits a larger application
-with an admin site and an ORM, and a lighter framework such as FastAPI. The
-choice will be recorded in an ADR.
-
-*Impact:* the layout in #1 and the whole of #3.
-
-### Do Celery and Streamlit have a place in the design?
-
-Both are worth showing if they solve a real problem here:
-
-- **Celery** could run ETL loads as background jobs (for example, loading a
-  new state or filing period on request) instead of a one-shot Compose
-  service.
-- **Streamlit** could serve an analyst-facing dashboard alongside the React
-  map, built directly on the Python data layer.
-
-Each needs to earn its place under the
-[guiding principle](#guiding-principle). Each will be decided in an ADR.
-
 ## Resolved
+
+### Application stack
+
+Answered in [#14](https://github.com/ShawnMcCollum/BroadbandMap/issues/14).
+
+| # | Question | Resolution | Where |
+|---|----------|------------|-------|
+| S1 | Which Python framework serves the API? | **Django**, with GeoDjango and Django REST Framework. The ETL lives in the same project. | [ADR 0002](decisions/0002-django-for-api-and-data-model.md) |
+| S2 | Does Celery have a place in the design? | **Yes.** Data loads run as Celery tasks, with Redis as the broker, and each load is recorded. | [ADR 0003](decisions/0003-celery-for-background-loads.md), [#15](https://github.com/ShawnMcCollum/BroadbandMap/issues/15) |
+| S3 | Does Streamlit have a place in the design? | **Yes.** An analyst dashboard alongside the map, reading data only through the API. | [ADR 0004](decisions/0004-streamlit-analyst-dashboard.md), [#16](https://github.com/ShawnMcCollum/BroadbandMap/issues/16) |
 
 ### Project and process
 
@@ -63,7 +50,7 @@ Answered in [#12](https://github.com/ShawnMcCollum/BroadbandMap/issues/12).
 | P5 | What does "done" look like? | **The process is the project.** Each merged issue should leave the repository in a coherent, presentable state. |
 | P6 | What quality bar? | **Production grade.** Tests, validation, error handling and documentation are expected, not optional. |
 | P7 | Design for growth, or keep everything minimal? | **Design for growth.** Structure each layer so new states, data categories and features can be added without reworking what exists. |
-| P8 | Which languages go where? | **Python** for the ETL and the API. **TypeScript** for the web front end. **PostgreSQL/PostGIS** for storage. The API framework is still open (above). |
+| P8 | Which languages go where? | **Python** for the ETL and the API. **TypeScript** for the web front end. **PostgreSQL/PostGIS** for storage. The API framework is Django (S1). |
 | P9 | Who manages issues and pull requests? | Claude opens pull requests. The owner always merges. Each PR resolves its issue completely when merged, unless the PR says otherwise (for example, when a new blocking issue is found but the work so far is worth merging). |
 | P10 | How are PRs merged? | **Merge commits.** |
 | P11 | Which branch prefixes are used? | `feat/`, `fix/`, `docs/` and `chore/`, followed by the issue number and a short name (e.g., `docs/12-project-questions`). |
@@ -86,9 +73,9 @@ Answered in [#12](https://github.com/ShawnMcCollum/BroadbandMap/issues/12).
 | # | Question | Resolution | Where |
 |---|----------|------------|-------|
 | 6 | H3 through the `h3-pg` extension (which needs a custom image) or in Python? | **Python.** The stock PostGIS image is enough. | #1, #2 |
-| 7 | Which migration tool? | **Plain SQL.** See the [guiding principle](#guiding-principle). | #1 |
+| 7 | Which migration tool? | ~~Plain SQL.~~ **Superseded:** Django migrations, the framework's own tool. | [ADR 0002](decisions/0002-django-for-api-and-data-model.md) |
 | 8 | Toolchain? | Python 3.12 with uv, ruff, mypy and pytest. Node 22 LTS with pnpm, ESLint, Prettier and Vitest. | #1 |
-| 9 | Run the ETL as a Compose service or on the host? | **Compose service.** Reviewers need only Docker. | #1, #2 |
+| 9 | Run the ETL as a Compose service or on the host? | ~~Compose service.~~ **Superseded:** Celery tasks run by a worker service. Reviewers still need only Docker. | [ADR 0003](decisions/0003-celery-for-background-loads.md) |
 | 10 | Make CI a required status check? | **No CI for this project.** Lint, type checks and tests run locally. | #1 |
 
 ### Repo and process
