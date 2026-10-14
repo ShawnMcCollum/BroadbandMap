@@ -42,6 +42,9 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.gis",
     "core",
+    "geography",
+    "bdc",
+    "served_unserved",
 ]
 
 MIDDLEWARE = [
