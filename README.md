@@ -25,8 +25,14 @@ Architectural and scope decisions are recorded in
 
 ## Development approach
 
-This project is developed with AI assistance. Work is organized so that each
-working session is focused on a single issue and ends in a single pull
-request. Keeping each session narrow keeps the working context to a minimum,
-makes every change easy to review, and leaves a clear trail from issue to
-decision to code.
+This project is developed with AI assistance. The workflow follows a few rules:
+
+- **One issue per session.** Each working session is focused on a single
+  issue and ends in a single pull request. Keeping each session narrow keeps
+  the working context to a minimum and makes every change easy to review.
+- **One branch per issue.** All issue work is done on a branch, preferably
+  one branch per issue, named after the issue (e.g., `docs/6-branch-pr-workflow`).
+- **Pull requests only.** All merges to `main` go through a pull request.
+  Nothing is committed directly to `main`.
+
+Together these leave a clear trail from issue to branch to decision to code.
