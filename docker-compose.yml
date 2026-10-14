@@ -1,0 +1,89 @@
+# Local development environment. Every setting has a working default; copy
+# .env.example to .env to override them.
+
+x-postgres-env: &postgres-env
+  POSTGRES_DB: ${POSTGRES_DB:-broadbandmap}
+  POSTGRES_USER: ${POSTGRES_USER:-broadbandmap}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-broadbandmap}
+
+x-backend-env: &backend-env
+  POSTGRES_HOST: db
+  CELERY_BROKER_URL: redis://redis:6379/0
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-dev-only-insecure-key}
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-true}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      <<: *postgres-env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      <<: [*postgres-env, *backend-env]
+    volumes:
+      - ./backend:/app
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build: ./backend
+    command: celery -A config worker --loglevel=info
+    environment:
+      <<: [*postgres-env, *backend-env]
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+      VITE_USE_POLLING: "true"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+  dashboard:
+    build: ./dashboard
+    environment:
+      API_BASE_URL: http://backend:8000
+    volumes:
+      - ./dashboard:/app
+    ports:
+      - "${DASHBOARD_PORT:-8501}:8501"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

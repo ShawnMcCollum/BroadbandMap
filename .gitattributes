@@ -1,0 +1,14 @@
+# Normalize line endings to LF in the repository and in working copies, so
+# files behave the same inside Linux containers on any host.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary
