@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "geography",
     "bdc",
     "served_unserved",
+    "etl",
 ]
 
 MIDDLEWARE = [

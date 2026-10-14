@@ -19,6 +19,9 @@ data/raw/
     └── tl_2020_39_cousub.zip
 ```
 
+Once the files are in place, load them as described in
+[Load the Ohio data](../README.md#load-the-ohio-data).
+
 ## 1. FCC Served/Unserved data for Ohio
 
 The FCC download is behind a web form, so it is downloaded by hand.
