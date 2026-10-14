@@ -1,0 +1,26 @@
+from django.contrib import admin
+from django.db.models import QuerySet
+from django.http import HttpRequest
+
+from core.admin import ReadOnlyModelAdmin
+from served_unserved.models import ServedStatus
+
+
+@admin.register(ServedStatus)
+class ServedStatusAdmin(ReadOnlyModelAdmin):
+    list_display = ("location_id", "release", "any_100_20", "wired_100_20", "terrestrial_100_20")
+    list_filter = ("release", "any_100_20", "wired_100_20", "terrestrial_100_20")
+    list_select_related = ("release",)
+    # search_fields makes the search box render; get_search_results does the search.
+    search_fields = ("location__location_id",)
+    search_help_text = "Location ID"
+
+    def get_search_results(
+        self, request: HttpRequest, queryset: QuerySet[ServedStatus], search_term: str
+    ) -> tuple[QuerySet[ServedStatus], bool]:
+        term = search_term.strip()
+        if not term:
+            return queryset, False
+        if term.isdecimal():
+            return queryset.filter(location_id=int(term)), False
+        return queryset.none(), False
