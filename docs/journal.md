@@ -9,6 +9,21 @@ Newest entries first.
 
 ---
 
+## 2026-10-14 — Sourcing boundary data
+
+- The FCC file has no geometry, so boundary files had to be sourced before the
+  loader (#2) could start (#9). Census TIGER/Line 2020 was chosen; the reasons
+  are in [ADR 0005](decisions/0005-census-tiger-2020-boundaries.md).
+- The guiding idea: **fetch broadly, load narrowly.** Raw files are cheap to
+  load later, while sourcing and documenting a new dataset is the harder part.
+  Every geography that could plausibly be useful is downloaded now, and the
+  loader decides what to populate.
+- Download size was the only real cost. Nothing in `data/` is committed, so
+  Git LFS was considered and not needed. The one large outlier, nationwide ZIP
+  code areas (528 MB), was made opt-in.
+- The first map will be the smallest useful view: Served/Not served by
+  county. #2 was updated to say so.
+
 ## 2026-10-14 — Choosing the application stack
 
 - The open stack questions were settled in ADRs 0002–0004 (#14): Django for

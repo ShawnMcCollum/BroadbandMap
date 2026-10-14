@@ -19,12 +19,14 @@ All data comes from the FCC National Broadband Map, **December 2025** release:
 > file itself, however, is stamped with a later processing date
 > (`bdc_39_fixed_broadband_served_unserved_D25_29sep2026.zip`).
 
-The Served/Unserved file has no geometry. Mapping by county or census block
-needs separate Census boundary files
-([#9](https://github.com/ShawnMcCollum/BroadbandMap/issues/9)).
+The Served/Unserved file has no geometry. Boundaries for counties, census
+blocks and other areas come from the U.S. Census Bureau's 2020 TIGER/Line
+files
+([ADR 0005](docs/decisions/0005-census-tiger-2020-boundaries.md)).
 
-Data files are not included in this repository. Download instructions will be
-provided in [`data/`](data/) as the loading pipeline is built.
+Data files are not included in this repository. Download instructions, and a
+script that fetches the boundary files, are in
+[`data/README.md`](data/README.md).
 
 ## Running locally
 
@@ -97,6 +99,7 @@ Architectural and scope decisions are recorded in
 - [0002 — Django for the API and data model](docs/decisions/0002-django-for-api-and-data-model.md)
 - [0003 — Celery for background data loads](docs/decisions/0003-celery-for-background-loads.md)
 - [0004 — Streamlit for an analyst dashboard](docs/decisions/0004-streamlit-analyst-dashboard.md)
+- [0005 — Census TIGER/Line 2020 for boundary geometries](docs/decisions/0005-census-tiger-2020-boundaries.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
