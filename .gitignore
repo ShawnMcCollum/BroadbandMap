@@ -1,0 +1,35 @@
+# Data — downloaded by each user, never committed
+data/*
+!data/README.md
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local assistant/tooling files
+CLAUDE.md
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
