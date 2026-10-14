@@ -80,6 +80,21 @@ Every setting has a working default. To change one, copy `.env.example` to
   Set `WEB_PORT` or `DASHBOARD_PORT` in `.env` to a free port, then run
   `docker compose up` again.
 
+### Load the Ohio data
+
+1. Download the source files into `data/raw/`, as described in
+   [`data/README.md`](data/README.md).
+2. Run the data load:
+
+   ```powershell
+   docker compose run --rm backend python manage.py load_served_unserved
+   ```
+
+The data load takes about six minutes and replaces any data loaded before. The
+application keeps running meanwhile. If a file is missing or malformed, or the
+loaded counts do not match the files, it stops with an error and leaves the
+database unchanged.
+
 ### Checks
 
 Formatting, lint, type checks and tests run inside the containers:
@@ -88,6 +103,13 @@ Formatting, lint, type checks and tests run inside the containers:
 docker compose run --rm backend sh check.sh
 docker compose run --rm --no-deps dashboard sh check.sh
 docker compose run --rm --no-deps web pnpm check
+```
+
+The full-data suite loads the real files in `data/raw/` and checks the result
+against independent readers of those files. It takes about 13 minutes:
+
+```powershell
+docker compose run --rm backend pytest -m full_data
 ```
 
 ## Design decisions
@@ -101,6 +123,7 @@ Architectural and scope decisions are recorded in
 - [0004 — Streamlit for an analyst dashboard](docs/decisions/0004-streamlit-analyst-dashboard.md)
 - [0005 — Census TIGER/Line 2020 for boundary geometries](docs/decisions/0005-census-tiger-2020-boundaries.md)
 - [0006 — Data model for locations and boundaries](docs/decisions/0006-data-model-for-locations-and-boundaries.md)
+- [0007 — Loading and verifying the source data](docs/decisions/0007-loading-and-verifying-the-source-data.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

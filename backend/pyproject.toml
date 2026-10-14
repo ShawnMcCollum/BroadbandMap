@@ -45,4 +45,7 @@ django_settings_module = "config.settings"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
-addopts = "--strict-markers"
+addopts = "--strict-markers -m 'not full_data'"
+markers = [
+    "full_data: reconciles a load of the real files in /data/raw (run with -m full_data)",
+]
