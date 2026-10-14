@@ -9,6 +9,24 @@ Newest entries first.
 
 ---
 
+## 2026-10-14 — Choosing the application stack
+
+- The open stack questions were settled in ADRs 0002–0004 (#14): Django for
+  the API and data model, Celery for data loads, Streamlit for an analyst
+  dashboard.
+- Simplicity still matters, but each tool here replaces something that would
+  otherwise be built by hand: the admin and migrations, load tracking, and
+  chart-heavy analysis views.
+- Django and Streamlit build on existing experience. **Celery is new to the
+  project's author.** It is adopted deliberately, to show how AI-assisted
+  development shortens the path from learning a tool to using it well in
+  production.
+- Two earlier answers from #8 were superseded and marked as such in
+  [open-questions.md](open-questions.md): plain SQL migrations gave way to
+  Django migrations, and the one-shot ETL service gave way to Celery tasks.
+- Issues #1, #2 and #3 were rewritten for the new stack. #15 (Celery loads) and
+  #16 (Streamlit dashboard) were opened.
+
 ## 2026-10-14 — Project-level questions
 
 - Before more feature work, the project's goals and working conventions were
