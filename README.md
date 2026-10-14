@@ -26,6 +26,36 @@ needs separate Census boundary files
 Data files are not included in this repository. Download instructions will be
 provided in [`data/`](data/) as the loading pipeline is built.
 
+## Running locally
+
+The only prerequisite is [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+Commands below are for PowerShell.
+
+```powershell
+git clone https://github.com/ShawnMcCollum/BroadbandMap.git
+cd BroadbandMap
+docker compose up --build
+```
+
+Every setting has a working default. To change one, copy `.env.example` to
+`.env` and edit it.
+
+| Service | URL | What it shows |
+|---------|-----|---------------|
+| Web (React) | <http://localhost:5173> | Stack check page |
+| Dashboard (Streamlit) | <http://localhost:8501> | Stack check page |
+| API (Django) | <http://localhost:8000/api/health/> | Health of PostGIS, Redis and the Celery worker |
+
+### Checks
+
+Formatting, lint, type checks and tests run inside the containers:
+
+```powershell
+docker compose run --rm backend sh check.sh
+docker compose run --rm --no-deps dashboard sh check.sh
+docker compose run --rm --no-deps web pnpm check
+```
+
 ## Design decisions
 
 Architectural and scope decisions are recorded in
