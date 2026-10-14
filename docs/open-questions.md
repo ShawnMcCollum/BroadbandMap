@@ -1,8 +1,10 @@
 # Open questions
 
 Questions that came up while planning the project, with their resolutions.
-Each entry points to where the answer is acted on. Raised and answered in
-[#8](https://github.com/ShawnMcCollum/BroadbandMap/issues/8).
+Each entry points to where the answer is acted on. Planning questions were
+raised and answered in
+[#8](https://github.com/ShawnMcCollum/BroadbandMap/issues/8); project-level
+questions in [#12](https://github.com/ShawnMcCollum/BroadbandMap/issues/12).
 
 When a question is resolved, its entry stays here with the answer, so the
 reasoning behind it can still be traced. Significant decisions are written up
@@ -23,7 +25,51 @@ underserved below 100/20) are a separate question.
 *Impact:* only the map's labels and explanatory text. The data can only
 express 100/20 either way.
 
+### Which Python framework serves the API?
+
+The API is now written in Python (see project-level question P8 below), which
+changes the TypeScript API planned in #1 and #3. The candidates are Django
+(with GeoDjango and Django REST Framework), which fits a larger application
+with an admin site and an ORM, and a lighter framework such as FastAPI. The
+choice will be recorded in an ADR.
+
+*Impact:* the layout in #1 and the whole of #3.
+
+### Do Celery and Streamlit have a place in the design?
+
+Both are worth showing if they solve a real problem here:
+
+- **Celery** could run ETL loads as background jobs (for example, loading a
+  new state or filing period on request) instead of a one-shot Compose
+  service.
+- **Streamlit** could serve an analyst-facing dashboard alongside the React
+  map, built directly on the Python data layer.
+
+Each needs to earn its place under the
+[guiding principle](#guiding-principle). Each will be decided in an ADR.
+
 ## Resolved
+
+### Project and process
+
+Answered in [#12](https://github.com/ShawnMcCollum/BroadbandMap/issues/12).
+
+| # | Question | Resolution |
+|---|----------|------------|
+| P1 | Who reads this repository? | Readers range from non-technical to technical. The README and docs must work for both: a clear story up front, technical depth behind it. |
+| P2 | Is the product the map, or the engineering? | **The engineering.** The project shows how an architect uses AI-assisted development to take domain knowledge to production quickly. The map is the evidence. |
+| P3 | Should the project try to say something new about the domain? | **No.** It shows skill at working with broadband data, not new insights for people who already know the field. |
+| P4 | What is the timeline? | The repository is public from the first commit, and its history is part of the work. It shows the project going from nothing to something real, step by step. |
+| P5 | What does "done" look like? | **The process is the project.** Each merged issue should leave the repository in a coherent, presentable state. |
+| P6 | What quality bar? | **Production grade.** Tests, validation, error handling and documentation are expected, not optional. |
+| P7 | Design for growth, or keep everything minimal? | **Design for growth.** Structure each layer so new states, data categories and features can be added without reworking what exists. |
+| P8 | Which languages go where? | **Python** for the ETL and the API. **TypeScript** for the web front end. **PostgreSQL/PostGIS** for storage. The API framework is still open (above). |
+| P9 | Who manages issues and pull requests? | Claude opens pull requests. The owner always merges. Each PR resolves its issue completely when merged, unless the PR says otherwise (for example, when a new blocking issue is found but the work so far is worth merging). |
+| P10 | How are PRs merged? | **Merge commits.** |
+| P11 | Which branch prefixes are used? | `feat/`, `fix/`, `docs/` and `chore/`, followed by the issue number and a short name (e.g., `docs/12-project-questions`). |
+| P12 | When is something a journal entry and when is it an ADR? | The **journal** is about the process: how the work went and why it changed direction. An **ADR** records a decision about the product or its features. |
+| P13 | Who writes the journal, and how often? | Neutral voice. Add an entry only when there is reasoning worth recording. |
+| P14 | What do reviewers need installed, and on what platform? | **Only Docker.** Assume reviewers use Windows: commands in the docs must work in PowerShell, and line endings are normalized in the repository. |
 
 ### Data and domain
 

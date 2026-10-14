@@ -9,6 +9,19 @@ Newest entries first.
 
 ---
 
+## 2026-10-14 — Project-level questions
+
+- Before more feature work, the project's goals and working conventions were
+  written down (#12), so every later session starts from the same
+  understanding. The answers are in
+  [open-questions.md](open-questions.md#project-and-process).
+- The main change in direction: **the API moves from TypeScript to Python.**
+  Python then covers both the ETL and the API, and TypeScript stays in the web
+  front end. #1 and #3 will need updating once the framework is chosen.
+- Django, Celery and Streamlit came up as tools worth showing. They are logged
+  as open questions rather than adopted, because each has to solve a real
+  problem in this design first.
+
 ## 2026-10-14 — Planning and open questions
 
 - Inspected the Ohio Served/Unserved file: one 222 MB CSV with ~4.5M
