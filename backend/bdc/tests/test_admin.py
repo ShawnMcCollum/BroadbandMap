@@ -1,59 +1,27 @@
-import pytest
-from django.db.models import Model
 from django.test import Client
 from django.urls import reverse
 
-from bdc.models import Location
+from bdc.models import Release
 
 
-def admin_url(obj: Model, view: str, *args: object) -> str:
-    return reverse(f"admin:{obj._meta.app_label}_{obj._meta.model_name}_{view}", args=args)
-
-
-@pytest.fixture(params=["release", "location"])
-def record(request: pytest.FixtureRequest) -> Model:
-    obj: Model = request.getfixturevalue(request.param)
-    return obj
-
-
-def test_changelist_lists_the_record(admin_client: Client, record: Model) -> None:
-    response = admin_client.get(admin_url(record, "changelist"))
+def test_changelist_lists_the_release(admin_client: Client, release: Release) -> None:
+    response = admin_client.get(reverse("admin:bdc_release_changelist"))
 
     assert response.status_code == 200
-    assert record in response.context["cl"].result_list
+    assert release in response.context["cl"].result_list
 
 
-def test_change_view_opens(admin_client: Client, record: Model) -> None:
-    response = admin_client.get(admin_url(record, "change", record.pk))
+def test_change_view_opens(admin_client: Client, release: Release) -> None:
+    url = reverse("admin:bdc_release_change", args=[release.pk])
 
-    assert response.status_code == 200
-
-
-def test_record_cannot_be_added_changed_or_deleted(admin_client: Client, record: Model) -> None:
-    assert admin_client.get(admin_url(record, "add")).status_code == 403
-    assert admin_client.post(admin_url(record, "change", record.pk), {}).status_code == 403
-    assert (
-        admin_client.post(admin_url(record, "delete", record.pk), {"post": "yes"}).status_code
-        == 403
-    )
+    assert admin_client.get(url).status_code == 200
 
 
-@pytest.mark.parametrize("term", ["1000338835", "882a91ae3bfffff", "390490001101000"])
-def test_location_search_finds_the_location(
-    admin_client: Client, location: Location, term: str
-) -> None:
-    response = admin_client.get(admin_url(location, "changelist"), {"q": term})
+def test_release_cannot_be_added_changed_or_deleted(admin_client: Client, release: Release) -> None:
+    add = reverse("admin:bdc_release_add")
+    change = reverse("admin:bdc_release_change", args=[release.pk])
+    delete = reverse("admin:bdc_release_delete", args=[release.pk])
 
-    assert response.status_code == 200
-    assert list(response.context["cl"].result_list) == [location]
-
-
-# "²" passes str.isdigit() but int() rejects it.
-@pytest.mark.parametrize("term", ["not-a-number", "²"])
-def test_location_search_for_unknown_text_finds_nothing(
-    admin_client: Client, location: Location, term: str
-) -> None:
-    response = admin_client.get(admin_url(location, "changelist"), {"q": term})
-
-    assert response.status_code == 200
-    assert list(response.context["cl"].result_list) == []
+    assert admin_client.get(add).status_code == 403
+    assert admin_client.post(change, {}).status_code == 403
+    assert admin_client.post(delete, {"post": "yes"}).status_code == 403

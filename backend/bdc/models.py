@@ -1,4 +1,4 @@
-"""FCC Broadband Data Collection: releases and serviceable locations."""
+"""FCC Broadband Data Collection releases."""
 
 from django.db import models
 
@@ -27,38 +27,3 @@ class Release(models.Model):
 
     def __str__(self) -> str:
         return f"{self.as_of:%B %Y} (processed {self.processed_on:%Y-%m-%d})"
-
-
-class Location(models.Model):
-    """A broadband-serviceable location.
-
-    It has no release, because a location exists across releases.
-    """
-
-    location_id = models.BigIntegerField(
-        primary_key=True,
-        help_text="FCC location ID from the Broadband Serviceable Location Fabric.",
-    )
-    block = models.ForeignKey(
-        "geography.Block",
-        on_delete=models.PROTECT,
-        related_name="locations",
-        help_text="2020 census block containing the location (block_geoid).",
-    )
-    h3_res8 = models.CharField(
-        max_length=15,
-        db_index=True,
-        help_text="H3 resolution-8 cell index, lowercase hex (h3_res8_id).",
-    )
-
-    class Meta:
-        ordering = ["location_id"]
-        constraints = [
-            models.CheckConstraint(
-                condition=models.Q(h3_res8__regex=r"^[0-9a-f]{15}$"),
-                name="bdc_location_h3_res8_format",
-            ),
-        ]
-
-    def __str__(self) -> str:
-        return str(self.location_id)

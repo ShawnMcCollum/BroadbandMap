@@ -8,11 +8,20 @@ from served_unserved.models import Rollup, ServedStatus
 
 @admin.register(ServedStatus)
 class ServedStatusAdmin(ReadOnlyModelAdmin):
-    list_display = ("location_id", "release", "any_100_20", "wired_100_20", "terrestrial_100_20")
+    # block_id shows the GEOID without fetching each block and its geometry.
+    list_display = (
+        "location_id",
+        "release",
+        "block_id",
+        "h3_res8",
+        "any_100_20",
+        "wired_100_20",
+        "terrestrial_100_20",
+    )
     list_filter = ("release", "any_100_20", "wired_100_20", "terrestrial_100_20")
     list_select_related = ("release",)
     # search_fields makes the search box render; get_search_results does the search.
-    search_fields = ("location__location_id",)
+    search_fields = ("location_id",)
     search_help_text = "Location ID"
 
     def get_search_results(

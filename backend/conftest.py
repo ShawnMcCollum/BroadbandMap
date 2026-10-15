@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from bdc.models import Location, Release
+from bdc.models import Release
 from geography.models import Block, BlockGroup, County, CountySubdivision, Place, State, Tract
 from geography.tests.helpers import boundary_fields
 from served_unserved.models import Rollup, ServedStatus
@@ -71,15 +71,12 @@ def release(db: None) -> Release:
 
 
 @pytest.fixture
-def location(block: Block) -> Location:
-    return Location.objects.create(location_id=1000338835, block=block, h3_res8="882a91ae3bfffff")
-
-
-@pytest.fixture
-def served_status(release: Release, location: Location) -> ServedStatus:
+def served_status(release: Release, block: Block) -> ServedStatus:
     return ServedStatus.objects.create(
         release=release,
-        location=location,
+        location_id=1000338835,
+        block=block,
+        h3_res8="882a91ae3bfffff",
         any_100_20=True,
         wired_100_20=True,
         terrestrial_100_20=True,

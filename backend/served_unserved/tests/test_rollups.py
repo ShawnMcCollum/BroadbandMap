@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 from django.db.models import Count, Q, QuerySet, Sum
 
-from bdc.models import Location, Release
+from bdc.models import Release
 from geography.models import Block, BlockGroup, County, CountySubdivision, Place, State, Tract
 from geography.tests.helpers import boundary_fields
 from served_unserved.models import AREA_KEYS, Rollup, RollupLevel, ServedStatus
@@ -70,6 +70,23 @@ SELECTED = {
     ("county_subdivision", "3904918000"): {1001, 1003},
 }
 
+# (level, code) -> location IDs that statuses_in selects in other_release, where location 1003
+# lies in block 390410001001001 and cell C (test_each_release_keeps_its_own_placement)
+MOVED = {
+    ("county", "39049"): set(),
+    ("county", "39041"): {1003},
+    ("tract", "39049000200"): set(),
+    ("tract", "39041000100"): {1003},
+    ("block_group", "390410001001"): {1003},
+    ("block", "390490002001000"): set(),
+    ("block", "390410001001001"): {1003},
+    ("h3_res8", CELL_B): set(),
+    ("h3_res8", CELL_C): {1003},
+    ("place", "3918000"): set(),
+    ("county_subdivision", "3904918000"): set(),
+    ("county_subdivision", "3904158618"): {1003},
+}
+
 
 def add_block(state: State, geoid: str, place: str | None, county_subdivision: str) -> Block:
     """Create the block, and its county, tract, block group and areas unless they exist."""
@@ -115,12 +132,11 @@ def add_block(state: State, geoid: str, place: str | None, county_subdivision: s
 def add_status(
     release: Release, location_id: int, block: Block, cell: str, flags: str
 ) -> ServedStatus:
-    location, _ = Location.objects.get_or_create(
-        location_id=location_id, defaults={"block": block, "h3_res8": cell}
-    )
     return ServedStatus.objects.create(
         release=release,
-        location=location,
+        location_id=location_id,
+        block=block,
+        h3_res8=cell,
         any_100_20=flags[0] == "1",
         wired_100_20=flags[1] == "1",
         terrestrial_100_20=flags[2] == "1",
@@ -226,6 +242,34 @@ def test_rebuilding_replaces_the_rows(release_with_statuses: Release) -> None:
         (level, code, *changed.get((level, code), tuple(counts)))
         for level, code, *counts in EXPECTED
     ]
+
+
+def test_each_release_keeps_its_own_placement(
+    release_with_statuses: Release, other_release: Release
+) -> None:
+    build_all(release_with_statuses)
+    # In the other release, location 1003 lies in a Delaware County block outside every place
+    # and in cell C, not in a Franklin County block of Columbus city and in cell B.
+    add_status(other_release, 1003, Block.objects.get(pk="390410001001001"), CELL_C, "111")
+
+    assert build_all(other_release) == 6
+    assert build_all(release_with_statuses) == 21
+
+    assert rollup_rows(release_with_statuses) == EXPECTED
+    assert rollup_rows(other_release) == [
+        ("block", "390410001001001", 1, 1, 1, 1),
+        ("block_group", "390410001001", 1, 1, 1, 1),
+        ("county", "39041", 1, 1, 1, 1),
+        ("county_subdivision", "3904158618", 1, 1, 1, 1),
+        ("h3_res8", CELL_C, 1, 1, 1, 1),
+        ("tract", "39041000100", 1, 1, 1, 1),
+    ]
+    for (level, code), location_ids in SELECTED.items():
+        statuses = statuses_in(release_with_statuses, level, code)
+        assert set(statuses.values_list("location_id", flat=True)) == location_ids
+    for (level, code), location_ids in MOVED.items():
+        statuses = statuses_in(other_release, level, code)
+        assert set(statuses.values_list("location_id", flat=True)) == location_ids
 
 
 def test_release_without_statuses_has_no_rollups(
