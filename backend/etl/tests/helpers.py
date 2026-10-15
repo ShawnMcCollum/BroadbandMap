@@ -9,7 +9,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 MALFORMED = FIXTURES / "malformed"
 FCC_STEM = "bdc_39_fixed_broadband_served_unserved_D25_29sep2026"
 
-# The fixture CSV's rollups: (level, code, locations, any, wired, terrestrial), sorted.
+# The fixture CSV's rollups: (level, code, locations, any, wired, terrestrial), sorted. The
+# fixture blocks lie in Troy township and in no place.
 FIXTURE_ROLLUPS = [
     ("block", "390553120001004", 1, 0, 0, 0),
     ("block", "390553120001013", 5, 5, 0, 5),
@@ -20,6 +21,7 @@ FIXTURE_ROLLUPS = [
     ("block_group", "390553120001", 6, 5, 0, 5),
     ("block_group", "390553120002", 25, 25, 10, 15),
     ("county", "39055", 31, 30, 10, 20),
+    ("county_subdivision", "3905577574", 31, 30, 10, 20),
     ("h3_res8", "882ab14c07fffff", 7, 7, 0, 0),
     ("h3_res8", "882ab14c65fffff", 1, 1, 0, 1),
     ("h3_res8", "882ab14e23fffff", 1, 1, 0, 1),

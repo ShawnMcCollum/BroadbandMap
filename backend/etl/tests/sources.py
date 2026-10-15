@@ -9,7 +9,7 @@ import io
 import struct
 import zipfile
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
@@ -111,3 +111,18 @@ def fcc_summary(zip_path: Path) -> FccSummary:
         for level, codes in areas.items()
     }
     return FccSummary(rows, flag_combinations, locations_per_county, rollups)
+
+
+def add_up_by_area(
+    blocks: Mapping[str, tuple[int, int, int, int]], area_of: Mapping[str, str | None]
+) -> dict[str, tuple[int, int, int, int]]:
+    """Add up each block's counts into its area. Blocks with no area are left out."""
+    totals: dict[str, list[int]] = {}
+    for block, counts in blocks.items():
+        area = area_of[block]
+        if area is None:
+            continue
+        total = totals.setdefault(area, [0, 0, 0, 0])
+        for index, value in enumerate(counts):
+            total[index] += value
+    return {area: (t[0], t[1], t[2], t[3]) for area, t in totals.items()}

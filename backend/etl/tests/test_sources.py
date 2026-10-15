@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from etl.tests.helpers import FCC_STEM, FIXTURE_ROLLUPS, FIXTURES, make_data_dir
-from etl.tests.sources import boundary_counts, dbf_records, fcc_summary
+from etl.tests.sources import AREA_CODES, add_up_by_area, boundary_counts, dbf_records, fcc_summary
 
 
 def test_dbf_records_reads_a_tract() -> None:
@@ -40,6 +40,14 @@ def test_fcc_summary_counts_the_fixture_csv(tmp_path: Path) -> None:
     assert summary.flag_combinations == {"0,0,0": 1, "1,0,0": 10, "1,0,1": 10, "1,1,1": 10}
     assert summary.locations_per_county == {"39055": 31}
     expected: dict[str, dict[str, tuple[int, int, int, int]]] = {}
+    # The reader does not compute places or county subdivisions.
     for level, code, locations, any_, wired, terrestrial in FIXTURE_ROLLUPS:
-        expected.setdefault(level, {})[code] = (locations, any_, wired, terrestrial)
+        if level in AREA_CODES:
+            expected.setdefault(level, {})[code] = (locations, any_, wired, terrestrial)
     assert summary.rollups == expected
+
+
+def test_add_up_by_area() -> None:
+    blocks = {"A": (1, 1, 0, 1), "B": (2, 1, 1, 1), "C": (3, 0, 0, 0)}
+
+    assert add_up_by_area(blocks, {"A": "X", "B": "X", "C": None}) == {"X": (3, 2, 1, 2)}

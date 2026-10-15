@@ -59,6 +59,8 @@ class RollupLevel(models.TextChoices):
     BLOCK_GROUP = "block_group", "Block group"
     BLOCK = "block", "Census block"
     H3_RES8 = "h3_res8", "H3 resolution-8 cell"
+    PLACE = "place", "Place"
+    COUNTY_SUBDIVISION = "county_subdivision", "County subdivision"
 
 
 @dataclass(frozen=True)
@@ -68,49 +70,73 @@ class AreaKey:
     ``pattern`` is the regular expression a code matches in full, and ``form`` says the same in
     words. ``group_by`` gives the code of a status's area, as an expression over ServedStatus.
     ``lookup`` is the ServedStatus lookup that selects an area's statuses by its code.
+    ``covers_every_location`` says whether every location lies in an area at this level: a
+    location outside every place has no place.
     """
 
     pattern: str
     form: str
     group_by: Combinable
     lookup: str
+    covers_every_location: bool
 
 
 # A census code is the area's GEOID, and an H3 code is the cell index. A location is in a
 # county, tract or block group when its block GEOID starts with the code, and in a block or an
-# H3 cell when its block GEOID or cell index is the code. startswith is served by the
-# varchar_pattern_ops index on block_id. A string range would not work: in the en_US
-# collation, "39049" <= block_id < "3904:" matches nothing.
+# H3 cell when its block GEOID or cell index is the code. A location is in a place or county
+# subdivision when its block's stored place or county subdivision is the code (see Block.place);
+# a location outside every place has no place. startswith is served by the varchar_pattern_ops
+# index on block_id. A string range would not work: in the en_US collation,
+# "39049" <= block_id < "3904:" matches nothing.
 AREA_KEYS: dict[str, AreaKey] = {
     RollupLevel.COUNTY: AreaKey(
         pattern="[0-9]{5}",
         form="5 digits",
         group_by=Left("location__block__geoid", 5),
         lookup="location__block__geoid__startswith",
+        covers_every_location=True,
     ),
     RollupLevel.TRACT: AreaKey(
         pattern="[0-9]{11}",
         form="11 digits",
         group_by=Left("location__block__geoid", 11),
         lookup="location__block__geoid__startswith",
+        covers_every_location=True,
     ),
     RollupLevel.BLOCK_GROUP: AreaKey(
         pattern="[0-9]{12}",
         form="12 digits",
         group_by=Left("location__block__geoid", 12),
         lookup="location__block__geoid__startswith",
+        covers_every_location=True,
     ),
     RollupLevel.BLOCK: AreaKey(
         pattern="[0-9]{15}",
         form="15 digits",
         group_by=models.F("location__block__geoid"),
         lookup="location__block__geoid",
+        covers_every_location=True,
     ),
     RollupLevel.H3_RES8: AreaKey(
         pattern="[0-9a-f]{15}",
         form="15 lowercase hex characters",
         group_by=models.F("location__h3_res8"),
         lookup="location__h3_res8",
+        covers_every_location=True,
+    ),
+    RollupLevel.PLACE: AreaKey(
+        pattern="[0-9]{7}",
+        form="7 digits",
+        group_by=models.F("location__block__place"),
+        lookup="location__block__place",
+        covers_every_location=False,
+    ),
+    RollupLevel.COUNTY_SUBDIVISION: AreaKey(
+        pattern="[0-9]{10}",
+        form="10 digits",
+        group_by=models.F("location__block__county_subdivision"),
+        lookup="location__block__county_subdivision",
+        covers_every_location=True,
     ),
 }
 

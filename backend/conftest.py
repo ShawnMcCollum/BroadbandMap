@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from bdc.models import Location, Release
-from geography.models import Block, BlockGroup, County, State, Tract
+from geography.models import Block, BlockGroup, County, CountySubdivision, Place, State, Tract
 from geography.tests.helpers import boundary_fields
 from served_unserved.models import Rollup, ServedStatus
 
@@ -35,11 +35,27 @@ def block_group(tract: Tract) -> BlockGroup:
 
 
 @pytest.fixture
-def block(block_group: BlockGroup) -> Block:
+def place(state: State) -> Place:
+    return Place.objects.create(
+        geoid="3918000", name="Columbus city", state=state, **boundary_fields()
+    )
+
+
+@pytest.fixture
+def county_subdivision(county: County) -> CountySubdivision:
+    return CountySubdivision.objects.create(
+        geoid="3904918000", name="Columbus city", county=county, **boundary_fields()
+    )
+
+
+@pytest.fixture
+def block(block_group: BlockGroup, place: Place, county_subdivision: CountySubdivision) -> Block:
     return Block.objects.create(
         geoid="390490001101000",
         name="Block 1000",
         block_group=block_group,
+        place=place,
+        county_subdivision=county_subdivision,
         population_2020=25,
         housing_units_2020=10,
         urban_rural="U",

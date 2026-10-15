@@ -8,12 +8,14 @@ from pathlib import Path
 from django.db import IntegrityError, connection, models, transaction
 
 from bdc.models import Location, Release
+from etl.assign import assign_blocks
 from etl.bulk import copy_rows
 from etl.errors import LoadError, ReconciliationError
 from etl.fcc import LocationRow, read_locations
 from etl.files import check_files, find_fcc_file, tiger_path
 from etl.reconcile import Counts, database_counts, differences, expected_rollup_totals
 from etl.tiger import LEVELS, read_level
+from geography.models import Block
 from served_unserved.models import Rollup, RollupLevel, ServedStatus
 from served_unserved.rollups import build_rollups
 
@@ -68,7 +70,7 @@ def check_geometries() -> None:
 
 
 def analyze_tables(*tables: type[models.Model]) -> None:
-    """Refresh the planner's statistics on tables just filled, so queries on them plan well.
+    """Refresh the planner's statistics on tables just written, so queries on them plan well.
 
     After TRUNCATE, PostgreSQL treats a table as empty until it is analyzed. It then plans
     aggregates over millions of rows as nested loops with on-disk sorts.
@@ -134,6 +136,13 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
 
         check_geometries()
 
+        began = time.monotonic()
+        in_place = assign_blocks()
+        progress(
+            f"block assignment: {in_place:,} of {source.rows['block']:,} blocks in a place, "
+            f"in {time.monotonic() - began:.0f} s"
+        )
+
         release = Release.objects.create(
             filing_period=fcc.filing_period, as_of=fcc.as_of, processed_on=fcc.processed_on
         )
@@ -173,8 +182,8 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
         source.rows["served_status"] = count
         written(ServedStatus, count, began)
 
-        progress("Analyzing locations and statuses")
-        analyze_tables(Location, ServedStatus)
+        progress("Analyzing blocks, locations and statuses")
+        analyze_tables(Block, Location, ServedStatus)
 
         for rollup_level in RollupLevel:
             began = time.monotonic()

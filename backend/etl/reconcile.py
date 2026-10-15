@@ -3,12 +3,12 @@
 from collections import Counter
 from dataclasses import dataclass, field
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Left
 
 from bdc.models import Location, Release
 from etl.tiger import LEVELS
-from served_unserved.models import Rollup, RollupLevel, ServedStatus
+from served_unserved.models import AREA_KEYS, Rollup, RollupLevel, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS
 
 
@@ -77,13 +77,28 @@ def database_counts(release: Release) -> Counts:
     for level, *values in totals:
         for name, value in zip(COUNT_FIELDS, values, strict=True):
             counts.rollup_totals[f"{level}:{name}"] = value
+
+    # A location outside every place has no place row. Count such statuses into that level's
+    # totals, so that every level adds up to the state's totals.
+    for rollup_level, key in AREA_KEYS.items():
+        if key.covers_every_location:
+            continue
+        outside = statuses.filter(**{f"{key.lookup}__isnull": True}).aggregate(
+            locations=Count("id"),
+            any_100_20=Count("id", filter=Q(any_100_20=True)),
+            wired_100_20=Count("id", filter=Q(wired_100_20=True)),
+            terrestrial_100_20=Count("id", filter=Q(terrestrial_100_20=True)),
+        )
+        for name in COUNT_FIELDS:
+            counts.rollup_totals[f"{rollup_level}:{name}"] += outside[name]
     return counts
 
 
 def expected_rollup_totals(county_rollups: Counter[str]) -> Counter[str]:
     """What each rollup level must add up to, keyed like ``"tract:wired_100_20"``.
 
-    Every location lies in exactly one area at each level, so every level adds up to the
+    Every location lies in exactly one area at each level, or, at the place level, in at most
+    one; database_counts adds the statuses outside every place. So every level adds up to the
     state's totals, which are the sums of the county counts.
     """
     state: Counter[str] = Counter()

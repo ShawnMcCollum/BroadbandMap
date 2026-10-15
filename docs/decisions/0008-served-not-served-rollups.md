@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-14
-- **Amended by:** [0009](0009-rollups-for-finer-levels.md), which adds the tract, block group, block and H3 levels
+- **Amended by:** [0009](0009-rollups-for-finer-levels.md), which adds the tract, block group, block and H3 levels, and [0010](0010-place-and-county-subdivision-rollups.md), which adds the place and county subdivision levels
 
 ## Context
 

@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
+- **Amended by:** [0010](0010-place-and-county-subdivision-rollups.md), which adds the place and county subdivision levels
 
 ## Context
 

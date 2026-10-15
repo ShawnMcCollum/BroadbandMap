@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date
 from pathlib import Path
 
@@ -37,7 +38,7 @@ FIXTURE_COUNTS = {
     "Place": 1,
     "CountySubdivision": 2,
     "Location": 31,
-    "Rollup": 17,
+    "Rollup": 18,
     "ServedStatus": 31,
     "Release": 1,
 }
@@ -83,7 +84,15 @@ def test_result_reports_matching_counts(tmp_path: Path) -> None:
     }
     assert result.source.rollup_totals == {
         f"{level}:{name}": value
-        for level in ("county", "tract", "block_group", "block", "h3_res8")
+        for level in (
+            "county",
+            "tract",
+            "block_group",
+            "block",
+            "h3_res8",
+            "place",
+            "county_subdivision",
+        )
         for name, value in (
             ("locations", 31),
             ("any_100_20", 30),
@@ -189,6 +198,13 @@ def test_builds_the_rollups(tmp_path: Path) -> None:
     assert rows == FIXTURE_ROLLUPS
 
 
+def test_assigns_each_block_its_county_subdivision(tmp_path: Path) -> None:
+    load(tmp_path)
+
+    assert Block.objects.filter(county_subdivision_id="3905577574").count() == 49
+    assert Block.objects.exclude(place=None).count() == 0
+
+
 def test_release_comes_from_the_file_name(tmp_path: Path) -> None:
     result = load(tmp_path)
 
@@ -228,6 +244,23 @@ def test_rejected_tiger_file_rolls_back(tmp_path: Path) -> None:
 
     assert State.objects.count() == 0
     assert County.objects.count() == 0
+
+
+def test_block_outside_every_county_subdivision_rolls_back(tmp_path: Path) -> None:
+    middlefield_only = MALFORMED / "no_county_subdivision" / "tl_2020_39_cousub.zip"
+    data_dir = make_data_dir(tmp_path, tiger={"tl_2020_39_cousub": middlefield_only})
+
+    with pytest.raises(
+        LoadError,
+        match=re.escape(
+            "census blocks in no county subdivision: "
+            "390553120001000, 390553120001001, 390553120001002, 390553120001003, "
+            "390553120001004"
+        ),
+    ):
+        load_served_unserved(data_dir)
+
+    assert table_counts() == EMPTY_COUNTS
 
 
 def test_duplicate_location_id(tmp_path: Path) -> None:
@@ -294,13 +327,18 @@ def test_progress_reports_each_table(tmp_path: Path) -> None:
 
     assert any(message.startswith("census blocks: 49 rows") for message in messages)
     assert any(message.startswith("served statuses: 31 rows") for message in messages)
-    assert "Analyzing locations and statuses" in messages
+    assert any(
+        message.startswith("block assignment: 0 of 49 blocks in a place") for message in messages
+    )
+    assert "Analyzing blocks, locations and statuses" in messages
     for level, rows in (
         ("county", 1),
         ("tract", 1),
         ("block_group", 2),
         ("block", 6),
         ("h3_res8", 7),
+        ("place", 0),
+        ("county_subdivision", 1),
     ):
         assert any(message.startswith(f"rollups by {level}: {rows} rows") for message in messages)
     assert "Reconciling counts" in messages
