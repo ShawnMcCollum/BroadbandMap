@@ -16,6 +16,9 @@ x-backend-env: &backend-env
 services:
   db:
     image: postgis/postgis:17-3.5
+    # Parallel queries share memory through /dev/shm. Docker's default of 64 MB
+    # fails two large rollup queries at once; see ADR 0011.
+    shm_size: 256mb
     environment:
       <<: *postgres-env
     volumes:
