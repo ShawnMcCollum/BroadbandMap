@@ -1,7 +1,7 @@
 """Reconcile a load of the real files in /data/raw against independent readers.
 
 Deselected by default; run it with ``pytest -m full_data``. It does two full
-loads, so it takes about 22 minutes.
+loads, so it takes about 18 minutes.
 """
 
 from collections.abc import Iterator
@@ -12,7 +12,7 @@ from django.db.models import Count, F, Q
 from django.db.models.functions import Left
 from pytest_django.plugin import DjangoDbBlocker
 
-from bdc.models import Location, Release
+from bdc.models import Release
 from etl.files import DEFAULT_DATA_DIR, FCC_GLOB
 from etl.load import LoadResult, clear_tables, load_served_unserved
 from etl.tests import sources
@@ -119,7 +119,6 @@ def test_row_counts_match_the_source(
 ) -> None:
     for label, model in BOUNDARY_MODELS.items():
         assert model._default_manager.count() == expected_boundaries[label], label
-    assert Location.objects.count() == expected_fcc.rows
     assert ServedStatus.objects.count() == expected_fcc.rows
 
 
@@ -138,10 +137,10 @@ def test_flag_combinations_match_the_source(expected_fcc: sources.FccSummary) ->
 @pytest.mark.usefixtures("loaded")
 def test_locations_per_county_match_the_source(expected_fcc: sources.FccSummary) -> None:
     rows = (
-        Location.objects.order_by()
+        ServedStatus.objects.order_by()
         .annotate(county=Left("block_id", 5))
         .values_list("county")
-        .annotate(n=Count("location_id"))
+        .annotate(n=Count("id"))
     )
 
     assert dict(rows) == expected_fcc.locations_per_county
@@ -258,7 +257,7 @@ def test_each_key_selects_what_its_rollup_counts(loaded: LoadResult, level: str)
 
 def test_loader_counts_agree(loaded: LoadResult, expected_fcc: sources.FccSummary) -> None:
     assert loaded.source == loaded.database
-    assert loaded.source.rows["location"] == expected_fcc.rows
+    assert loaded.source.rows["served_status"] == expected_fcc.rows
 
 
 def test_loading_twice_leaves_the_same_counts(loaded: LoadResult) -> None:

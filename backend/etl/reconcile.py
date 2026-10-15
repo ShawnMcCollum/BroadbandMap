@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import Left
 
-from bdc.models import Location, Release
+from bdc.models import Release
 from etl.tiger import LEVELS
 from served_unserved.models import AREA_KEYS, Rollup, RollupLevel, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS
@@ -38,7 +38,6 @@ def database_counts(release: Release) -> Counts:
     counts = Counts()
     for level in LEVELS:
         counts.rows[level.label] = level.model._default_manager.count()
-    counts.rows["location"] = Location.objects.count()
 
     statuses = ServedStatus.objects.filter(release=release)
     counts.rows["served_status"] = statuses.count()
@@ -51,10 +50,10 @@ def database_counts(release: Release) -> Counts:
         counts.flag_combinations[f"{any_100_20:d},{wired_100_20:d},{terrestrial_100_20:d}"] = n
 
     county_rows = (
-        Location.objects.order_by()
+        statuses.order_by()
         .annotate(county=Left("block_id", 5))
         .values_list("county")
-        .annotate(n=Count("location_id"))
+        .annotate(n=Count("id"))
     )
     for county, n in county_rows:
         counts.locations_per_county[county] = n

@@ -97,7 +97,7 @@ loaded data is kept.
    docker compose run --rm backend python manage.py load_served_unserved
    ```
 
-The data load takes about eight minutes and replaces any data loaded
+The data load takes about six minutes and replaces any data loaded
 before. The application keeps running meanwhile. If a file is missing or
 malformed, or the loaded counts do not match the files, it stops with an error
 and leaves the database unchanged.
@@ -116,6 +116,12 @@ A database loaded before places and county subdivisions had rollups needs a
 full data load first: `build_rollups` stops with an error until every census
 block is assigned.
 
+Starting the backend applies any pending database migrations. On a database
+loaded before [ADR 0012](docs/decisions/0012-location-placement-per-release.md),
+the first start copies each location's census block and H3 cell onto its
+Served/Unserved statuses. It takes about two minutes for Ohio, and no reload
+is needed.
+
 ### Checks
 
 Formatting, lint, type checks and tests run inside the containers:
@@ -127,7 +133,7 @@ docker compose run --rm --no-deps web pnpm check
 ```
 
 The full-data suite loads the real files in `data/raw/` and checks the result
-against independent readers of those files. It takes about 22 minutes:
+against independent readers of those files. It takes about 18 minutes:
 
 ```powershell
 docker compose run --rm backend pytest -m full_data
@@ -149,6 +155,7 @@ Architectural and scope decisions are recorded in
 - [0009 — Rollups by tract, block group, block and H3 cell](docs/decisions/0009-rollups-for-finer-levels.md)
 - [0010 — Rollups by place and county subdivision](docs/decisions/0010-place-and-county-subdivision-rollups.md)
 - [0011 — Shared memory for the database container](docs/decisions/0011-database-shared-memory.md)
+- [0012 — A location's block and H3 cell are stored per release](docs/decisions/0012-location-placement-per-release.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

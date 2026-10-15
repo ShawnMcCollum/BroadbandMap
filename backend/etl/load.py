@@ -7,7 +7,7 @@ from pathlib import Path
 
 from django.db import IntegrityError, connection, models, transaction
 
-from bdc.models import Location, Release
+from bdc.models import Release
 from etl.assign import assign_blocks
 from etl.bulk import copy_rows
 from etl.errors import LoadError, ReconciliationError
@@ -22,7 +22,6 @@ from served_unserved.rollups import build_rollups
 LOADER_MODELS: tuple[type[models.Model], ...] = (
     Rollup,
     ServedStatus,
-    Location,
     Release,
     *(level.model for level in reversed(LEVELS)),
 )
@@ -85,7 +84,6 @@ def tally(rows: Iterable[LocationRow], counts: Counts) -> Iterator[LocationRow]:
     """Pass the rows through, counting each one as it goes by."""
     for row in rows:
         county = row.block_geoid[:5]
-        counts.rows["location"] += 1
         counts.flag_combinations[row.flags] += 1
         counts.locations_per_county[county] += 1
         counts.county_rollups[f"{county}:locations"] += 1
@@ -149,21 +147,12 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
 
         began = time.monotonic()
         count = copy_rows(
-            Location,
-            ("location_id", "block_id", "h3_res8"),
-            (
-                (row.location_id, row.block_geoid, row.h3_res8)
-                for row in tally(read_locations(fcc, geoids["block"], tiger["block"].name), source)
-            ),
-        )
-        written(Location, count, began)
-
-        began = time.monotonic()
-        count = copy_rows(
             ServedStatus,
             (
                 "release_id",
                 "location_id",
+                "block_id",
+                "h3_res8",
                 "any_100_20",
                 "wired_100_20",
                 "terrestrial_100_20",
@@ -172,18 +161,20 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
                 (
                     release.pk,
                     row.location_id,
+                    row.block_geoid,
+                    row.h3_res8,
                     row.any_100_20,
                     row.wired_100_20,
                     row.terrestrial_100_20,
                 )
-                for row in read_locations(fcc, geoids["block"], tiger["block"].name)
+                for row in tally(read_locations(fcc, geoids["block"], tiger["block"].name), source)
             ),
         )
         source.rows["served_status"] = count
         written(ServedStatus, count, began)
 
-        progress("Analyzing blocks, locations and statuses")
-        analyze_tables(Block, Location, ServedStatus)
+        progress("Analyzing blocks and statuses")
+        analyze_tables(Block, ServedStatus)
 
         for rollup_level in RollupLevel:
             began = time.monotonic()

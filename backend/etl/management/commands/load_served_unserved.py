@@ -33,7 +33,7 @@ class Command(BaseCommand):
             raise CommandError(str(error)) from error
 
         release = Release.objects.get(pk=result.release_id)
-        locations = result.database.rows["location"]
+        locations = result.database.rows["served_status"]
         self.stdout.write(
             self.style.SUCCESS(
                 f"Loaded {release}: {locations:,} locations in {result.seconds:.0f} s."

@@ -1,5 +1,7 @@
 import json
 import re
+from collections.abc import Iterator
+from collections.abc import Set as AbstractSet
 from datetime import date
 from pathlib import Path
 
@@ -8,11 +10,13 @@ from django.db import transaction
 from django.db.models import F
 from pytest import MonkeyPatch
 
-from bdc.models import Location, Release
+from bdc.models import Release
 from etl.errors import LoadError, ReconciliationError
+from etl.fcc import LocationRow, read_locations
+from etl.files import FccFile
 from etl.load import LOADER_MODELS, LoadResult, load_served_unserved
 from etl.reconcile import Counts, database_counts
-from etl.tests.helpers import FIXTURE_ROLLUPS, MALFORMED, edit_csv, make_data_dir
+from etl.tests.helpers import FCC_STEM, FIXTURE_ROLLUPS, MALFORMED, edit_csv, make_data_dir
 from etl.tiger import LEVELS
 from geography.models import (
     Block,
@@ -37,7 +41,6 @@ FIXTURE_COUNTS = {
     "Block": 49,
     "Place": 1,
     "CountySubdivision": 2,
-    "Location": 31,
     "Rollup": 18,
     "ServedStatus": 31,
     "Release": 1,
@@ -71,7 +74,6 @@ def test_result_reports_matching_counts(tmp_path: Path) -> None:
         "block": 49,
         "place": 1,
         "county_subdivision": 2,
-        "location": 31,
         "served_status": 31,
     }
     assert result.source.flag_combinations == {"0,0,0": 1, "1,0,0": 10, "1,0,1": 10, "1,1,1": 10}
@@ -171,12 +173,12 @@ def test_geometries_are_wgs84_multipolygons(tmp_path: Path) -> None:
     assert CountySubdivision.objects.get(pk="3905577574").geom.num_geom == 1
 
 
-def test_location_and_status_rows(tmp_path: Path) -> None:
+def test_status_rows(tmp_path: Path) -> None:
     load(tmp_path)
 
-    location = Location.objects.get(pk=1004026994)
-    assert location.block_id == "390553120001004"
-    assert location.h3_res8 == "882ab14f59fffff"
+    status = ServedStatus.objects.get(location_id=1004026994)
+    assert status.block_id == "390553120001004"
+    assert status.h3_res8 == "882ab14f59fffff"
 
     flags = {
         status.location_id: (status.any_100_20, status.wired_100_20, status.terrestrial_100_20)
@@ -187,6 +189,22 @@ def test_location_and_status_rows(tmp_path: Path) -> None:
     assert flags[1003989144] == (True, False, True)
     assert flags[1003988997] == (True, False, False)
     assert ServedStatus.objects.exclude(release=Release.objects.get()).count() == 0
+
+
+def test_reads_the_fcc_file_once(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    opened: list[str] = []
+
+    def counted(
+        fcc: FccFile, block_geoids: AbstractSet[str], block_file: str
+    ) -> Iterator[LocationRow]:
+        opened.append(fcc.path.name)
+        return read_locations(fcc, block_geoids, block_file)
+
+    monkeypatch.setattr("etl.load.read_locations", counted)
+
+    load(tmp_path)
+
+    assert opened == [f"{FCC_STEM}.zip"]
 
 
 def test_builds_the_rollups(tmp_path: Path) -> None:
@@ -264,7 +282,7 @@ def test_block_outside_every_county_subdivision_rolls_back(tmp_path: Path) -> No
 
 
 def test_duplicate_location_id(tmp_path: Path) -> None:
-    with pytest.raises(LoadError, match="bdc_location: duplicate key value"):
+    with pytest.raises(LoadError, match="served_unserved_servedstatus: duplicate key value"):
         load(tmp_path, csv=edit_csv(3, "location_id", "1003988971"))
 
     assert table_counts() == EMPTY_COUNTS
@@ -273,12 +291,12 @@ def test_duplicate_location_id(tmp_path: Path) -> None:
 def test_reconciliation_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     def short_by_one(release: Release) -> Counts:
         counts = database_counts(release)
-        counts.rows["location"] -= 1
+        counts.rows["served_status"] -= 1
         return counts
 
     monkeypatch.setattr("etl.load.database_counts", short_by_one)
 
-    with pytest.raises(ReconciliationError, match=r"rows\[location\]: source 31, database 30"):
+    with pytest.raises(ReconciliationError, match=r"rows\[served_status\]: source 31, database 30"):
         load(tmp_path)
 
     assert table_counts() == EMPTY_COUNTS
@@ -330,7 +348,7 @@ def test_progress_reports_each_table(tmp_path: Path) -> None:
     assert any(
         message.startswith("block assignment: 0 of 49 blocks in a place") for message in messages
     )
-    assert "Analyzing blocks, locations and statuses" in messages
+    assert "Analyzing blocks and statuses" in messages
     for level, rows in (
         ("county", 1),
         ("tract", 1),

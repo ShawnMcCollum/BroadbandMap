@@ -8,7 +8,7 @@ from django.db.models.functions import Left
 
 
 class ServedStatus(models.Model):
-    """A location's 100/20 Mbps status in one release."""
+    """A location's 100/20 Mbps status, and its block and H3 cell, in one release."""
 
     release = models.ForeignKey(
         "bdc.Release",
@@ -16,8 +16,23 @@ class ServedStatus(models.Model):
         related_name="served_statuses",
         db_index=False,
     )
-    location = models.ForeignKey(
-        "bdc.Location", on_delete=models.PROTECT, related_name="served_statuses"
+    location_id = models.BigIntegerField(
+        db_index=True,
+        help_text="FCC location ID from the Broadband Serviceable Location Fabric.",
+    )
+    block = models.ForeignKey(
+        "geography.Block",
+        on_delete=models.PROTECT,
+        related_name="served_statuses",
+        db_index=False,
+        help_text="2020 census block containing the location in this release (block_geoid).",
+    )
+    h3_res8 = models.CharField(
+        max_length=15,
+        help_text=(
+            "H3 resolution-8 cell index of the location in this release, lowercase hex "
+            "(h3_res8_id)."
+        ),
     )
     any_100_20 = models.BooleanField(
         help_text="100/20 Mbps available by any technology, including satellite."
@@ -32,10 +47,15 @@ class ServedStatus(models.Model):
     class Meta:
         verbose_name = "served status"
         verbose_name_plural = "served statuses"
-        ordering = ["release", "location"]
+        ordering = ["release", "location_id"]
         constraints = [
             models.UniqueConstraint(
-                fields=["release", "location"], name="served_unserved_unique_location_per_release"
+                fields=["release", "location_id"],
+                name="served_unserved_unique_location_per_release",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(h3_res8__regex=r"^[0-9a-f]{15}$"),
+                name="served_unserved_h3_res8_format",
             ),
             models.CheckConstraint(
                 condition=models.Q(wired_100_20=False) | models.Q(terrestrial_100_20=True),
@@ -45,6 +65,16 @@ class ServedStatus(models.Model):
                 condition=models.Q(terrestrial_100_20=False) | models.Q(any_100_20=True),
                 name="served_unserved_terrestrial_implies_any",
             ),
+        ]
+        # Every area query filters on the release, so it leads. varchar_pattern_ops serves both
+        # startswith and = on block_id (ADR 0012).
+        indexes = [
+            models.Index(
+                fields=["release", "block"],
+                opclasses=["int8_ops", "varchar_pattern_ops"],
+                name="servedstatus_release_block",
+            ),
+            models.Index(fields=["release", "h3_res8"], name="servedstatus_release_h3"),
         ]
 
     def __str__(self) -> str:
@@ -81,61 +111,62 @@ class AreaKey:
     covers_every_location: bool
 
 
-# A census code is the area's GEOID, and an H3 code is the cell index. A location is in a
-# county, tract or block group when its block GEOID starts with the code, and in a block or an
-# H3 cell when its block GEOID or cell index is the code. A location is in a place or county
-# subdivision when its block's stored place or county subdivision is the code (see Block.place);
-# a location outside every place has no place. startswith is served by the varchar_pattern_ops
-# index on block_id. A string range would not work: in the en_US collation,
+# A census code is the area's GEOID, and an H3 code is the cell index. A status's block and cell
+# are those its own release gives (ADR 0012). A location is in a county, tract or block group when
+# its block GEOID starts with the code, and in a block or an H3 cell when its block GEOID or cell
+# index is the code. A location is in a place or county subdivision when its block's stored place
+# or county subdivision is the code (see Block.place); a location outside every place has no
+# place. startswith is served by the servedstatus_release_block index, whose block_id column uses
+# varchar_pattern_ops. A string range would not work: in the en_US collation,
 # "39049" <= block_id < "3904:" matches nothing.
 AREA_KEYS: dict[str, AreaKey] = {
     RollupLevel.COUNTY: AreaKey(
         pattern="[0-9]{5}",
         form="5 digits",
-        group_by=Left("location__block__geoid", 5),
-        lookup="location__block__geoid__startswith",
+        group_by=Left("block__geoid", 5),
+        lookup="block__geoid__startswith",
         covers_every_location=True,
     ),
     RollupLevel.TRACT: AreaKey(
         pattern="[0-9]{11}",
         form="11 digits",
-        group_by=Left("location__block__geoid", 11),
-        lookup="location__block__geoid__startswith",
+        group_by=Left("block__geoid", 11),
+        lookup="block__geoid__startswith",
         covers_every_location=True,
     ),
     RollupLevel.BLOCK_GROUP: AreaKey(
         pattern="[0-9]{12}",
         form="12 digits",
-        group_by=Left("location__block__geoid", 12),
-        lookup="location__block__geoid__startswith",
+        group_by=Left("block__geoid", 12),
+        lookup="block__geoid__startswith",
         covers_every_location=True,
     ),
     RollupLevel.BLOCK: AreaKey(
         pattern="[0-9]{15}",
         form="15 digits",
-        group_by=models.F("location__block__geoid"),
-        lookup="location__block__geoid",
+        group_by=models.F("block__geoid"),
+        lookup="block__geoid",
         covers_every_location=True,
     ),
     RollupLevel.H3_RES8: AreaKey(
         pattern="[0-9a-f]{15}",
         form="15 lowercase hex characters",
-        group_by=models.F("location__h3_res8"),
-        lookup="location__h3_res8",
+        group_by=models.F("h3_res8"),
+        lookup="h3_res8",
         covers_every_location=True,
     ),
     RollupLevel.PLACE: AreaKey(
         pattern="[0-9]{7}",
         form="7 digits",
-        group_by=models.F("location__block__place"),
-        lookup="location__block__place",
+        group_by=models.F("block__place"),
+        lookup="block__place",
         covers_every_location=False,
     ),
     RollupLevel.COUNTY_SUBDIVISION: AreaKey(
         pattern="[0-9]{10}",
         form="10 digits",
-        group_by=models.F("location__block__county_subdivision"),
-        lookup="location__block__county_subdivision",
+        group_by=models.F("block__county_subdivision"),
+        lookup="block__county_subdivision",
         covers_every_location=True,
     ),
 }

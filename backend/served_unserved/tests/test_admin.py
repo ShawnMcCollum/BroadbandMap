@@ -16,6 +16,16 @@ def test_changelist_lists_the_status(admin_client: Client, served_status: Served
     assert served_status in response.context["cl"].result_list
 
 
+def test_changelist_shows_the_block_and_cell(
+    admin_client: Client, served_status: ServedStatus
+) -> None:
+    response = admin_client.get(reverse(CHANGELIST))
+
+    assert response.status_code == 200
+    assert "390490001101000" in response.text
+    assert "882a91ae3bfffff" in response.text
+
+
 def test_change_view_opens(admin_client: Client, served_status: ServedStatus) -> None:
     url = reverse("admin:served_unserved_servedstatus_change", args=[served_status.pk])
 
