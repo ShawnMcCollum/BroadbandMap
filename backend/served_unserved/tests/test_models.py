@@ -31,7 +31,12 @@ REJECTED_ROLLUPS = [
     ({"level": "block", "code": "882a91ae3bfffff"}, "served_unserved_rollup_code_fits_level"),
     ({"level": "h3_res8", "code": "882A91AE3BFFFFF"}, "served_unserved_rollup_code_fits_level"),
     ({"level": "h3_res8", "code": "882a91ae3bffff"}, "served_unserved_rollup_code_fits_level"),
-    ({"level": "place", "code": "3918000"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "state", "code": "39"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "place", "code": "391800"}, "served_unserved_rollup_code_fits_level"),
+    (
+        {"level": "county_subdivision", "code": "390491800"},
+        "served_unserved_rollup_code_fits_level",
+    ),
     (
         {"locations": 0, "any_100_20": 0, "terrestrial_100_20": 0, "wired_100_20": 0},
         "served_unserved_rollup_has_locations",
@@ -48,6 +53,8 @@ VALID_CODES = [
     ("block_group", "390490001101"),
     ("block", "390490001101000"),
     ("h3_res8", "882a91ae3bfffff"),
+    ("place", "3918000"),
+    ("county_subdivision", "3904918000"),
 ]
 
 
@@ -171,3 +178,9 @@ def test_h3_rollup_str(release: Release) -> None:
     assert str(rollup) == (
         "H3 resolution-8 cell 882a91ae3bfffff in December 2025 (processed 2026-09-29)"
     )
+
+
+def test_place_rollup_str(release: Release) -> None:
+    rollup = make_rollup(release, level="place", code="3918000")
+
+    assert str(rollup) == "Place 3918000 in December 2025 (processed 2026-09-29)"

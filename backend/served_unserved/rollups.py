@@ -22,14 +22,17 @@ def area_key(level: str) -> AreaKey:
 def build_rollups(release: Release, level: str) -> int:
     """Replace the release's rollups at one level with counts of its statuses.
 
-    Returns how many rows were written. Only areas with at least one location get a row.
-    Raises ValueError for a level without rollups.
+    Returns how many rows were written. Only areas with at least one location get a row, and a
+    location with no area at the level (outside every place) is left out. Raises ValueError for
+    a level without rollups.
     """
     key = area_key(level)
     areas = (
         ServedStatus.objects.filter(release=release)
         .order_by()
         .annotate(code=key.group_by)
+        # A location outside every place has no place code, and adds to no row.
+        .filter(code__isnull=False)
         .values("code")
         .annotate(
             n_locations=Count("pk"),

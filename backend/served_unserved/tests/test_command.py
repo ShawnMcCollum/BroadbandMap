@@ -6,6 +6,7 @@ from django.core.management.base import CommandError
 from pytest import MonkeyPatch
 
 from bdc.models import Release
+from geography.models import Block
 from served_unserved.models import Rollup, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, build_rollups
 
@@ -15,13 +16,15 @@ def test_build_rollups_rebuilds_every_release(served_status: ServedStatus) -> No
 
     call_command("build_rollups", stdout=out)
 
-    assert "Built 5 rollups for December 2025 (processed 2026-09-29)." in out.getvalue()
+    assert "Built 7 rollups for December 2025 (processed 2026-09-29)." in out.getvalue()
     rows = sorted(Rollup.objects.values_list("level", "code", *COUNT_FIELDS))
     assert rows == [
         ("block", "390490001101000", 1, 1, 1, 1),
         ("block_group", "390490001101", 1, 1, 1, 1),
         ("county", "39049", 1, 1, 1, 1),
+        ("county_subdivision", "3904918000", 1, 1, 1, 1),
         ("h3_res8", "882a91ae3bfffff", 1, 1, 1, 1),
+        ("place", "3918000", 1, 1, 1, 1),
         ("tract", "39049000110", 1, 1, 1, 1),
     ]
 
@@ -29,6 +32,15 @@ def test_build_rollups_rebuilds_every_release(served_status: ServedStatus) -> No
 def test_build_rollups_needs_a_release(db: None) -> None:
     with pytest.raises(CommandError, match="no release is loaded"):
         call_command("build_rollups")
+
+
+def test_build_rollups_needs_assigned_blocks(served_status: ServedStatus) -> None:
+    Block.objects.update(county_subdivision=None)
+
+    with pytest.raises(CommandError, match="some census blocks have no county subdivision"):
+        call_command("build_rollups")
+
+    assert Rollup.objects.count() == 0
 
 
 def test_failed_rebuild_keeps_the_previous_rollups(

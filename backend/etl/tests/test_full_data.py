@@ -1,7 +1,7 @@
 """Reconcile a load of the real files in /data/raw against independent readers.
 
 Deselected by default; run it with ``pytest -m full_data``. It does two full
-loads, so it takes about 18 minutes.
+loads, so it takes about 22 minutes.
 """
 
 from collections.abc import Iterator
@@ -60,7 +60,37 @@ PARENT_PREFIXES: list[tuple[type[Boundary], str, int]] = [
 # The selection rule is checked for every area at the levels with up to 10,000 areas, and for
 # every 100th area, in code order, at the block and H3 levels: all of them would take about
 # 11 minutes.
-SELECTION_STEPS = {"county": 1, "tract": 1, "block_group": 1, "block": 100, "h3_res8": 100}
+SELECTION_STEPS = {
+    "county": 1,
+    "tract": 1,
+    "block_group": 1,
+    "block": 100,
+    "h3_res8": 100,
+    "place": 1,
+    "county_subdivision": 1,
+}
+# The loaded column holding each block's area, at the levels the CSV cannot place
+ASSIGNED_COLUMNS = {"place": "place_id", "county_subdivision": "county_subdivision_id"}
+
+# Each pair of a block and an area that overlaps it: whether it is the block's own area, and the
+# share of the block's area inside the area. The table and column are filled in by the test.
+WITHIN_SQL = """
+WITH pairs AS (
+    SELECT
+        a.geoid IS NOT DISTINCT FROM b.{column} AS own,
+        CASE
+            WHEN ST_Covers(a.geom, b.geom) THEN 1.0
+            ELSE ST_Area(ST_Intersection(a.geom, b.geom)::geography) / ST_Area(b.geom::geography)
+        END AS share
+    FROM {table} AS a
+    JOIN geography_block AS b ON ST_Intersects(a.geom, b.geom)
+)
+SELECT
+    count(*) FILTER (WHERE own),
+    coalesce(min(share) FILTER (WHERE own), 1),
+    coalesce(max(share) FILTER (WHERE NOT own), 0)
+FROM pairs
+"""
 
 
 @pytest.fixture(scope="module")
@@ -163,7 +193,43 @@ def test_rollups_match_the_source(level: str, expected_fcc: sources.FccSummary) 
     rows = Rollup.objects.filter(level=level).values_list("code", *COUNT_FIELDS)
     found = {code: tuple(values) for code, *values in rows}
 
-    assert found == expected_fcc.rollups[level]
+    if level in ASSIGNED_COLUMNS:
+        # The CSV has no place column, so the independent side is its block counts, added up
+        # by each block's stored area.
+        area_of = dict(Block.objects.values_list("geoid", ASSIGNED_COLUMNS[level]))
+        expected = sources.add_up_by_area(expected_fcc.rollups["block"], area_of)
+    else:
+        expected = expected_fcc.rollups[level]
+    assert found == expected
+
+
+@pytest.mark.usefixtures("loaded")
+def test_every_block_has_a_county_subdivision() -> None:
+    assert Block.objects.filter(county_subdivision=None).count() == 0
+
+
+@pytest.mark.usefixtures("loaded")
+@pytest.mark.parametrize(
+    ("model", "column"), [(Place, "place_id"), (CountySubdivision, "county_subdivision_id")]
+)
+def test_blocks_lie_within_their_areas(model: type[Boundary], column: str) -> None:
+    """Each block lies within its own area and outside every other, to 0.1% of its area.
+
+    This is checked by overlap, not by the internal point the loader used.
+    """
+    # Table and column names come from model metadata and this module, never from input.
+    sql = WITHIN_SQL.format(table=connection.ops.quote_name(model._meta.db_table), column=column)
+    with connection.cursor() as cursor:
+        cursor.execute(sql)
+        row = cursor.fetchone()
+
+    assert row is not None
+    own, least_inside, most_outside = row
+    assert own == Block.objects.exclude(**{column: None}).count()
+    # Measured: 0.99988 for places and 0.99983 for county subdivisions
+    assert least_inside >= 0.999
+    # Measured: 3.1e-7 for places and 7.6e-7 for county subdivisions
+    assert most_outside <= 0.001
 
 
 @pytest.mark.parametrize("level", list(RollupLevel))

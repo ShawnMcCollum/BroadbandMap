@@ -3,12 +3,14 @@
 The fixtures are a real slice of Ohio:
 
 - Geauga County (39055), census tract 3120 (39055312000) with its 2 block groups
-  and 49 blocks, Parkman CDP, and Troy and Middlefield townships. Middlefield
-  is a seven-part MultiPolygon.
+  and 49 blocks, Parkman CDP, and Troy and Middlefield townships. All 49
+  blocks have their internal point in Troy township, and none is in a place.
+  Middlefield is a seven-part MultiPolygon.
 - The state and county files also keep West Virginia and Brooke County, WV, to
   test the Ohio filter. State outlines are simplified; everything else keeps
   full detail.
-- Two malformed tract files, for the tests of the loader's error messages.
+- Two malformed tract files, and a county subdivision file without Troy
+  township, for the tests of the loader's error messages.
 
 The sources are public: TIGER/Line is public domain, and the FCC data is
 public. Run it by hand from the repository root when the fixtures need to
@@ -55,6 +57,8 @@ ENTRIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ),
     ),
     ("malformed/bad_geoid", "tl_2020_39_tract", ("-sql", BAD_GEOID_SQL)),
+    # Middlefield township only: it holds none of the fixture blocks' internal points.
+    ("malformed/no_county_subdivision", "tl_2020_39_cousub", ("-where", "GEOID = '3905549714'")),
 )
 
 

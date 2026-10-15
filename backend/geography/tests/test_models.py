@@ -110,3 +110,51 @@ def test_geometry_in_nad83_is_stored_as_wgs84(state: State) -> None:
 
 def test_str_shows_name_and_geoid(county: County) -> None:
     assert str(county) == "Franklin County (39049)"
+
+
+def test_block_records_its_place_and_county_subdivision(
+    block: Block, place: Place, county_subdivision: CountySubdivision
+) -> None:
+    assert block.place == place
+    assert block.county_subdivision == county_subdivision
+    assert list(place.blocks.all()) == [block]
+    assert list(county_subdivision.blocks.all()) == [block]
+
+
+def test_block_without_a_place_or_county_subdivision_is_accepted(block_group: BlockGroup) -> None:
+    Block.objects.create(
+        geoid="390490001101001",
+        name="Block 1001",
+        block_group=block_group,
+        population_2020=0,
+        housing_units_2020=0,
+        urban_rural="R",
+        **boundary_fields(),
+    )
+
+    assert Block.objects.get(pk="390490001101001").place is None
+
+
+def test_county_subdivision_in_another_county_is_rejected(block: Block, state: State) -> None:
+    delaware = County.objects.create(
+        geoid="39041", name="Delaware County", state=state, **boundary_fields()
+    )
+    orange = CountySubdivision.objects.create(
+        geoid="3904158618", name="Orange township", county=delaware, **boundary_fields()
+    )
+    block.county_subdivision = orange
+
+    with (
+        pytest.raises(IntegrityError, match="geography_block_county_subdivision_in_county"),
+        transaction.atomic(),
+    ):
+        block.save()
+
+
+def test_area_with_blocks_cannot_be_deleted(
+    place: Place, county_subdivision: CountySubdivision, block: Block
+) -> None:
+    with pytest.raises(ProtectedError):
+        place.delete()
+    with pytest.raises(ProtectedError):
+        county_subdivision.delete()

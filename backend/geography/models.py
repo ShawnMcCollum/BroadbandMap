@@ -1,6 +1,8 @@
 """Census TIGER/Line 2020 boundaries, stored in WGS84."""
 
 from django.contrib.gis.db import models
+from django.db.models.functions import Left
+from django.db.models.lookups import Exact
 
 
 def geoid_format(length: int, model_name: str) -> models.CheckConstraint:
@@ -92,9 +94,35 @@ class Block(Boundary):
         choices=UrbanRural.choices,
         help_text="2020 urban/rural classification (UR20).",
     )
+    place = models.ForeignKey(
+        "Place",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="blocks",
+        help_text="Place that holds the block's internal point, if any. Set by every data load.",
+    )
+    county_subdivision = models.ForeignKey(
+        "CountySubdivision",
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="blocks",
+        help_text=(
+            "County subdivision that holds the block's internal point. Set by every data load."
+        ),
+    )
 
     class Meta(Boundary.Meta):
-        constraints = [geoid_format(15, "block")]
+        constraints = [
+            geoid_format(15, "block"),
+            # County subdivisions nest within counties, so a block's subdivision GEOID starts
+            # with its county's GEOID.
+            models.CheckConstraint(
+                condition=models.Q(county_subdivision=None)
+                | models.Q(Exact(Left("county_subdivision", 5), Left("geoid", 5))),
+                name="geography_block_county_subdivision_in_county",
+            ),
+        ]
         verbose_name = "census block"
         verbose_name_plural = "census blocks"
 
@@ -102,7 +130,8 @@ class Block(Boundary):
 class Place(Boundary):
     """A city, village or other census place.
 
-    Matched to locations by spatial join, not by GEOID prefix.
+    A census block is in the place that holds its internal point (Block.place). A place's GEOID
+    is not a prefix of its blocks' GEOIDs.
     """
 
     geoid = models.CharField(primary_key=True, max_length=7)
@@ -117,7 +146,8 @@ class Place(Boundary):
 class CountySubdivision(Boundary):
     """A township or other county subdivision.
 
-    Matched to locations by spatial join, not by GEOID prefix.
+    A census block is in the county subdivision that holds its internal point
+    (Block.county_subdivision). Its GEOID is not a prefix of its blocks' GEOIDs.
     """
 
     geoid = models.CharField(primary_key=True, max_length=10)

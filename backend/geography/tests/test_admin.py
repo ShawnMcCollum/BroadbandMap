@@ -2,8 +2,7 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
-from geography.models import Boundary, County, CountySubdivision, Place, State
-from geography.tests.helpers import boundary_fields
+from geography.models import Block, Boundary
 
 BOUNDARY_FIXTURES = [
     "state",
@@ -18,20 +17,6 @@ BOUNDARY_FIXTURES = [
 
 def admin_url(obj: Boundary, view: str, *args: object) -> str:
     return reverse(f"admin:{obj._meta.app_label}_{obj._meta.model_name}_{view}", args=args)
-
-
-@pytest.fixture
-def place(state: State) -> Place:
-    return Place.objects.create(
-        geoid="3918000", name="Columbus city", state=state, **boundary_fields()
-    )
-
-
-@pytest.fixture
-def county_subdivision(county: County) -> CountySubdivision:
-    return CountySubdivision.objects.create(
-        geoid="3904918000", name="Clinton township", county=county, **boundary_fields()
-    )
 
 
 @pytest.fixture(params=BOUNDARY_FIXTURES)
@@ -65,3 +50,14 @@ def test_boundary_cannot_be_added_changed_or_deleted(
         admin_client.post(admin_url(boundary, "delete", boundary.pk), {"post": "yes"}).status_code
         == 403
     )
+
+
+def test_block_change_view_shows_its_place_and_county_subdivision(
+    admin_client: Client, block: Block
+) -> None:
+    response = admin_client.get(admin_url(block, "change", block.pk))
+
+    assert response.status_code == 200
+    content = response.content.decode()
+    assert "Columbus city (3918000)" in content
+    assert "Columbus city (3904918000)" in content

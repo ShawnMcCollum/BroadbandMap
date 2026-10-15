@@ -2,10 +2,10 @@ import re
 from datetime import date
 
 import pytest
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, Q, QuerySet, Sum
 
 from bdc.models import Location, Release
-from geography.models import Block, BlockGroup, County, State, Tract
+from geography.models import Block, BlockGroup, County, CountySubdivision, Place, State, Tract
 from geography.tests.helpers import boundary_fields
 from served_unserved.models import AREA_KEYS, Rollup, RollupLevel, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, build_rollups, statuses_in
@@ -26,6 +26,15 @@ STATUSES = [
     (1004, "390410001001000", CELL_B, "100"),
     (1005, "390410001001001", CELL_C, "111"),
 ]
+# Block GEOID -> (place, county subdivision). Columbus city (3918000) crosses into Delaware
+# County. Blocks 390490001102000 and 390410001001001 are in no place.
+BLOCK_AREAS = {
+    "390410001001000": ("3918000", "3904158618"),
+    "390410001001001": (None, "3904158618"),
+    "390490001101000": ("3918000", "3904918000"),
+    "390490001102000": (None, "3904916112"),
+    "390490002001000": ("3918000", "3904918000"),
+}
 # (level, code, locations, any, wired, terrestrial), sorted
 EXPECTED = [
     ("block", "390410001001000", 1, 1, 0, 0),
@@ -39,9 +48,13 @@ EXPECTED = [
     ("block_group", "390490002001", 1, 0, 0, 0),
     ("county", "39041", 2, 2, 1, 1),
     ("county", "39049", 3, 2, 1, 2),
+    ("county_subdivision", "3904158618", 2, 2, 1, 1),
+    ("county_subdivision", "3904916112", 1, 1, 0, 1),
+    ("county_subdivision", "3904918000", 2, 1, 1, 1),
     ("h3_res8", CELL_C, 1, 1, 1, 1),
     ("h3_res8", CELL_B, 2, 1, 0, 0),
     ("h3_res8", CELL_A, 2, 2, 1, 2),
+    ("place", "3918000", 3, 2, 1, 1),
     ("tract", "39041000100", 2, 2, 1, 1),
     ("tract", "39049000110", 2, 2, 1, 2),
     ("tract", "39049000200", 1, 0, 0, 0),
@@ -53,11 +66,13 @@ SELECTED = {
     ("block_group", "390490001101"): {1001},
     ("block", "390410001001001"): {1005},
     ("h3_res8", CELL_B): {1003, 1004},
+    ("place", "3918000"): {1001, 1003, 1004},
+    ("county_subdivision", "3904918000"): {1001, 1003},
 }
 
 
-def add_block(state: State, geoid: str) -> Block:
-    """Create the block, and its county, tract and block group unless they exist."""
+def add_block(state: State, geoid: str, place: str | None, county_subdivision: str) -> Block:
+    """Create the block, and its county, tract, block group and areas unless they exist."""
     county, _ = County.objects.get_or_create(
         geoid=geoid[:5],
         defaults={"name": f"County {geoid[:5]}", "state": state, **boundary_fields()},
@@ -70,10 +85,26 @@ def add_block(state: State, geoid: str) -> Block:
         geoid=geoid[:12],
         defaults={"name": f"Block Group {geoid[:12]}", "tract": tract, **boundary_fields()},
     )
+    place_row = None
+    if place is not None:
+        place_row, _ = Place.objects.get_or_create(
+            geoid=place,
+            defaults={"name": f"Place {place}", "state": state, **boundary_fields()},
+        )
+    subdivision, _ = CountySubdivision.objects.get_or_create(
+        geoid=county_subdivision,
+        defaults={
+            "name": f"County subdivision {county_subdivision}",
+            "county": county,
+            **boundary_fields(),
+        },
+    )
     return Block.objects.create(
         geoid=geoid,
         name=f"Block {geoid}",
         block_group=block_group,
+        place=place_row,
+        county_subdivision=subdivision,
         population_2020=0,
         housing_units_2020=0,
         urban_rural="R",
@@ -118,7 +149,7 @@ def counted(statuses: QuerySet[ServedStatus]) -> tuple[int, int, int, int]:
 
 @pytest.fixture
 def release_with_statuses(state: State, release: Release) -> Release:
-    blocks = {geoid: add_block(state, geoid) for geoid in sorted({row[1] for row in STATUSES})}
+    blocks = {geoid: add_block(state, geoid, *BLOCK_AREAS[geoid]) for geoid in sorted(BLOCK_AREAS)}
     County.objects.create(geoid="39001", name="Adams County", state=state, **boundary_fields())
     for location_id, geoid, cell, flags in STATUSES:
         add_status(release, location_id, blocks[geoid], cell, flags)
@@ -137,7 +168,7 @@ def test_area_keys_cover_every_level() -> None:
 
 
 def test_builds_one_row_per_area_with_locations(release_with_statuses: Release) -> None:
-    assert build_all(release_with_statuses) == 17
+    assert build_all(release_with_statuses) == 21
 
     assert rollup_rows(release_with_statuses) == EXPECTED
     assert not Rollup.objects.filter(code="39001").exists()
@@ -159,14 +190,16 @@ def test_counts_only_the_given_release(
 ) -> None:
     add_status(other_release, 1003, Block.objects.get(pk="390490002001000"), CELL_B, "111")
 
-    assert build_all(release_with_statuses) == 17
-    assert build_all(other_release) == 5
+    assert build_all(release_with_statuses) == 21
+    assert build_all(other_release) == 7
 
     assert rollup_rows(other_release) == [
         ("block", "390490002001000", 1, 1, 1, 1),
         ("block_group", "390490002001", 1, 1, 1, 1),
         ("county", "39049", 1, 1, 1, 1),
+        ("county_subdivision", "3904918000", 1, 1, 1, 1),
         ("h3_res8", CELL_B, 1, 1, 1, 1),
+        ("place", "3918000", 1, 1, 1, 1),
         ("tract", "39049000200", 1, 1, 1, 1),
     ]
     assert rollup_rows(release_with_statuses) == EXPECTED
@@ -178,13 +211,15 @@ def test_rebuilding_replaces_the_rows(release_with_statuses: Release) -> None:
         any_100_20=True, wired_100_20=True, terrestrial_100_20=True
     )
 
-    assert build_all(release_with_statuses) == 17
+    assert build_all(release_with_statuses) == 21
 
     changed = {
         ("block", "390490002001000"): (1, 1, 1, 1),
         ("block_group", "390490002001"): (1, 1, 1, 1),
         ("county", "39049"): (3, 3, 2, 3),
+        ("county_subdivision", "3904918000"): (2, 2, 2, 2),
         ("h3_res8", CELL_B): (2, 2, 1, 1),
+        ("place", "3918000"): (3, 3, 2, 2),
         ("tract", "39049000200"): (1, 1, 1, 1),
     }
     assert rollup_rows(release_with_statuses) == [
@@ -202,8 +237,18 @@ def test_release_without_statuses_has_no_rollups(
 
 
 def test_build_rejects_a_level_without_rollups(release: Release) -> None:
-    with pytest.raises(ValueError, match=re.escape("no rollups at level 'place'")):
-        build_rollups(release, "place")
+    with pytest.raises(ValueError, match=re.escape("no rollups at level 'state'")):
+        build_rollups(release, "state")
+
+
+def test_location_outside_every_place_adds_to_no_place_row(release_with_statuses: Release) -> None:
+    build_all(release_with_statuses)
+
+    sums = {
+        level: Rollup.objects.filter(level=level).aggregate(Sum("locations"))["locations__sum"]
+        for level in RollupLevel
+    }
+    assert sums == {level: 3 if level == RollupLevel.PLACE else 5 for level in RollupLevel}
 
 
 def test_statuses_in_selects_what_each_rollup_counts(release_with_statuses: Release) -> None:
@@ -229,15 +274,17 @@ def test_statuses_in_is_limited_to_the_release(
 
     county = statuses_in(other_release, "county", "39049")
     cell = statuses_in(other_release, "h3_res8", CELL_B)
+    place = statuses_in(other_release, "place", "3918000")
 
     assert set(county.values_list("location_id", flat=True)) == {1003}
     assert set(cell.values_list("location_id", flat=True)) == {1003}
+    assert set(place.values_list("location_id", flat=True)) == {1003}
 
 
 @pytest.mark.parametrize(
     ("level", "code", "message"),
     [
-        ("place", "3918000", "no rollups at level 'place'"),
+        ("state", "39", "no rollups at level 'state'"),
         ("county", "3904", "county code '3904' is not 5 digits"),
         ("county", "390490", "county code '390490' is not 5 digits"),
         ("county", "3904a", "county code '3904a' is not 5 digits"),
@@ -254,6 +301,12 @@ def test_statuses_in_is_limited_to_the_release(
             "h3_res8",
             "882a91ae3bffff",
             "h3_res8 code '882a91ae3bffff' is not 15 lowercase hex characters",
+        ),
+        ("place", "391800", "place code '391800' is not 7 digits"),
+        (
+            "county_subdivision",
+            "390491800",
+            "county_subdivision code '390491800' is not 10 digits",
         ),
     ],
 )

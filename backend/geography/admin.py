@@ -56,6 +56,8 @@ class BlockAdmin(BoundaryAdmin):
         "geoid",
         "name",
         "block_group_id",
+        "place_id",
+        "county_subdivision_id",
         "population_2020",
         "housing_units_2020",
         "urban_rural",

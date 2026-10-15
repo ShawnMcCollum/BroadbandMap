@@ -90,18 +90,24 @@ Every setting has a working default. To change one, copy `.env.example` to
    docker compose run --rm backend python manage.py load_served_unserved
    ```
 
-The data load takes about seven minutes and replaces any data loaded
+The data load takes about eight minutes and replaces any data loaded
 before. The application keeps running meanwhile. If a file is missing or
 malformed, or the loaded counts do not match the files, it stops with an error
 and leaves the database unchanged.
 
-Each data load also counts the Served/Not served locations in every county,
-census tract, block group, census block and H3 cell. To rebuild those counts
-from the loaded data without a full reload, run:
+Each data load also assigns every census block to the place and county
+subdivision that hold its internal point, then counts the Served/Not served
+locations in every county, census tract, block group, census block, H3 cell,
+place and county subdivision. To rebuild those counts from the loaded data
+without a full reload, run:
 
 ```powershell
 docker compose run --rm backend python manage.py build_rollups
 ```
+
+A database loaded before places and county subdivisions had rollups needs a
+full data load first: `build_rollups` stops with an error until every census
+block is assigned.
 
 ### Checks
 
@@ -114,7 +120,7 @@ docker compose run --rm --no-deps web pnpm check
 ```
 
 The full-data suite loads the real files in `data/raw/` and checks the result
-against independent readers of those files. It takes about 18 minutes:
+against independent readers of those files. It takes about 22 minutes:
 
 ```powershell
 docker compose run --rm backend pytest -m full_data
@@ -134,6 +140,7 @@ Architectural and scope decisions are recorded in
 - [0007 — Loading and verifying the source data](docs/decisions/0007-loading-and-verifying-the-source-data.md)
 - [0008 — Served/Not served rollups by geography](docs/decisions/0008-served-not-served-rollups.md)
 - [0009 — Rollups by tract, block group, block and H3 cell](docs/decisions/0009-rollups-for-finer-levels.md)
+- [0010 — Rollups by place and county subdivision](docs/decisions/0010-place-and-county-subdivision-rollups.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
