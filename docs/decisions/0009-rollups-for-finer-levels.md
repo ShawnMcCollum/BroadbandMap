@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Amended by:** [0010](0010-place-and-county-subdivision-rollups.md), which adds the place and county subdivision levels
+- **Amended by:** [0010](0010-place-and-county-subdivision-rollups.md), which adds the place and county subdivision levels, and [0012](0012-location-placement-per-release.md), which groups and selects through the block and H3 cell stored on each status
 
 ## Context
 
