@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
+- **Follow-up:** [0011](0011-database-shared-memory.md) raises the database container's `/dev/shm` to 256 MB
 
 ## Context
 

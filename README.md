@@ -42,6 +42,13 @@ docker compose up --build
 Every setting has a working default. To change one, copy `.env.example` to
 `.env` and edit it.
 
+The database container gets 256 MB of shared memory for PostgreSQL's
+parallel queries, in place of Docker's default 64 MB
+([ADR 0011](docs/decisions/0011-database-shared-memory.md)). A `db`
+container created before this setting keeps 64 MB until Compose recreates
+it, which the next `docker compose up` or `docker compose run` does. The
+loaded data is kept.
+
 | Service | URL | What it shows |
 |---------|-----|---------------|
 | Web (React) | <http://localhost:5173> | **Test page:** stack connection check |
@@ -141,6 +148,7 @@ Architectural and scope decisions are recorded in
 - [0008 — Served/Not served rollups by geography](docs/decisions/0008-served-not-served-rollups.md)
 - [0009 — Rollups by tract, block group, block and H3 cell](docs/decisions/0009-rollups-for-finer-levels.md)
 - [0010 — Rollups by place and county subdivision](docs/decisions/0010-place-and-county-subdivision-rollups.md)
+- [0011 — Shared memory for the database container](docs/decisions/0011-database-shared-memory.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
