@@ -3,7 +3,7 @@
 from collections import Counter
 from dataclasses import dataclass, field
 
-from django.db.models import Count
+from django.db.models import Count, Sum
 from django.db.models.functions import Left
 
 from bdc.models import Location, Release
@@ -20,6 +20,7 @@ class Counts:
     flag_combinations: Counter[str] = field(default_factory=Counter)
     locations_per_county: Counter[str] = field(default_factory=Counter)
     county_rollups: Counter[str] = field(default_factory=Counter)
+    rollup_totals: Counter[str] = field(default_factory=Counter)
 
     def as_dict(self) -> dict[str, dict[str, int]]:
         """Plain, sorted dictionaries, ready to store as JSON."""
@@ -28,6 +29,7 @@ class Counts:
             "flag_combinations": dict(sorted(self.flag_combinations.items())),
             "locations_per_county": dict(sorted(self.locations_per_county.items())),
             "county_rollups": dict(sorted(self.county_rollups.items())),
+            "rollup_totals": dict(sorted(self.rollup_totals.items())),
         }
 
 
@@ -65,7 +67,31 @@ def database_counts(release: Release) -> Counts:
     for code, *values in rollups:
         for name, value in zip(COUNT_FIELDS, values, strict=True):
             counts.county_rollups[f"{code}:{name}"] = value
+
+    totals = (
+        Rollup.objects.filter(release=release)
+        .order_by()
+        .values_list("level")
+        .annotate(*(Sum(name) for name in COUNT_FIELDS))
+    )
+    for level, *values in totals:
+        for name, value in zip(COUNT_FIELDS, values, strict=True):
+            counts.rollup_totals[f"{level}:{name}"] = value
     return counts
+
+
+def expected_rollup_totals(county_rollups: Counter[str]) -> Counter[str]:
+    """What each rollup level must add up to, keyed like ``"tract:wired_100_20"``.
+
+    Every location lies in exactly one area at each level, so every level adds up to the
+    state's totals, which are the sums of the county counts.
+    """
+    state: Counter[str] = Counter()
+    for key, value in county_rollups.items():
+        state[key.partition(":")[2]] += value
+    return Counter(
+        {f"{level}:{name}": state[name] for level in RollupLevel for name in COUNT_FIELDS}
+    )
 
 
 def differences(source: Counts, database: Counts) -> list[str]:
@@ -75,6 +101,7 @@ def differences(source: Counts, database: Counts) -> list[str]:
         ("flag_combinations", source.flag_combinations, database.flag_combinations),
         ("locations_per_county", source.locations_per_county, database.locations_per_county),
         ("county_rollups", source.county_rollups, database.county_rollups),
+        ("rollup_totals", source.rollup_totals, database.rollup_totals),
     )
     problems = []
     for name, from_source, from_database in sections:

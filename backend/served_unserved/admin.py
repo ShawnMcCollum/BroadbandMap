@@ -41,7 +41,7 @@ class RollupAdmin(ReadOnlyModelAdmin):
     list_select_related = ("release",)
     # search_fields makes the search box render; get_search_results does the search.
     search_fields = ("code",)
-    search_help_text = "Area code (GEOID)"
+    search_help_text = "Area code: GEOID or H3 cell index"
 
     def get_search_results(
         self, request: HttpRequest, queryset: QuerySet[Rollup], search_term: str

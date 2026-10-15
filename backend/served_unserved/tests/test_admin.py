@@ -2,6 +2,7 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
+from bdc.models import Release
 from served_unserved.models import Rollup, ServedStatus
 
 CHANGELIST = "admin:served_unserved_servedstatus_changelist"
@@ -81,6 +82,23 @@ def test_search_by_code_finds_the_rollup(admin_client: Client, rollup: Rollup) -
 
     assert response.status_code == 200
     assert list(response.context["cl"].result_list) == [rollup]
+
+
+def test_search_by_h3_cell_finds_the_rollup(admin_client: Client, release: Release) -> None:
+    cell = Rollup.objects.create(
+        release=release,
+        level="h3_res8",
+        code="882a91ae3bfffff",
+        locations=10,
+        any_100_20=8,
+        wired_100_20=4,
+        terrestrial_100_20=6,
+    )
+
+    response = admin_client.get(reverse(ROLLUPS), {"q": "882a91ae3bfffff"})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [cell]
 
 
 # The search is an exact match, so a prefix finds nothing.
