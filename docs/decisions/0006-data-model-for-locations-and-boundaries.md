@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-14
+- **Amended by:** [0012](0012-location-placement-per-release.md), which stores a location's block and H3 cell per release and removes `Location`
 
 ## Context
 
