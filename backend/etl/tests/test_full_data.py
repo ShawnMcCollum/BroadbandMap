@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 import pytest
 from django.db import connection, transaction
-from django.db.models import Count, F
+from django.db.models import Count, F, Q
 from django.db.models.functions import Left
 from pytest_django.plugin import DjangoDbBlocker
 
@@ -26,7 +26,8 @@ from geography.models import (
     State,
     Tract,
 )
-from served_unserved.models import ServedStatus
+from served_unserved.models import Rollup, RollupLevel, ServedStatus
+from served_unserved.rollups import COUNT_FIELDS, statuses_in
 
 RAW = DEFAULT_DATA_DIR
 pytestmark = [
@@ -150,6 +151,40 @@ def test_block_internal_points_lie_in_their_county() -> None:
     with connection.cursor() as cursor:
         cursor.execute(sql)
         assert cursor.fetchone() == (0,)
+
+
+@pytest.mark.usefixtures("loaded")
+def test_county_rollups_match_the_source(expected_fcc: sources.FccSummary) -> None:
+    rows = Rollup.objects.filter(level=RollupLevel.COUNTY).values_list("code", *COUNT_FIELDS)
+    found = {
+        f"{code}:{name}": value
+        for code, *values in rows
+        for name, value in zip(COUNT_FIELDS, values, strict=True)
+    }
+
+    assert found == expected_fcc.county_rollups
+
+
+def test_each_county_key_selects_what_its_rollup_counts(loaded: LoadResult) -> None:
+    release = Release.objects.get(pk=loaded.release_id)
+    for rollup in Rollup.objects.filter(release=release, level=RollupLevel.COUNTY):
+        totals = (
+            statuses_in(release, rollup.level, rollup.code)
+            .order_by()
+            .aggregate(
+                n=Count("pk"),
+                a=Count("pk", filter=Q(any_100_20=True)),
+                w=Count("pk", filter=Q(wired_100_20=True)),
+                t=Count("pk", filter=Q(terrestrial_100_20=True)),
+            )
+        )
+
+        assert (totals["n"], totals["a"], totals["w"], totals["t"]) == (
+            rollup.locations,
+            rollup.any_100_20,
+            rollup.wired_100_20,
+            rollup.terrestrial_100_20,
+        ), rollup.code
 
 
 def test_loader_counts_agree(loaded: LoadResult, expected_fcc: sources.FccSummary) -> None:

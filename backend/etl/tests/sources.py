@@ -63,17 +63,31 @@ def boundary_counts(tiger_dir: Path, state_fips: str = "39") -> dict[str, int]:
     return counts
 
 
+# (name in the county rollup counts, column in the FCC CSV)
+FLAG_COLUMNS = (
+    ("any_100_20", "any_dl100_ul20"),
+    ("wired_100_20", "wired_dl100_ul20"),
+    ("terrestrial_100_20", "terrestrial_dl100_ul20"),
+)
+
+
 class FccSummary(NamedTuple):
     rows: int
     flag_combinations: Counter[str]
     locations_per_county: Counter[str]
+    county_rollups: Counter[str]
 
 
 def fcc_summary(zip_path: Path) -> FccSummary:
-    """Count the rows, flag combinations and locations per county in the FCC zip's one CSV."""
+    """Count the rows, flag combinations, locations per county and county rollup counts.
+
+    The rollup counts are the locations and the three served counts of each county, keyed like
+    ``"39055:wired_100_20"``.
+    """
     rows = 0
     flag_combinations: Counter[str] = Counter()
     locations_per_county: Counter[str] = Counter()
+    county_rollups: Counter[str] = Counter()
     with zipfile.ZipFile(zip_path) as archive:
         (member,) = archive.namelist()
         with archive.open(member) as raw:
@@ -84,5 +98,9 @@ def fcc_summary(zip_path: Path) -> FccSummary:
                     for column in ("any_dl100_ul20", "wired_dl100_ul20", "terrestrial_dl100_ul20")
                 )
                 flag_combinations[flags] += 1
-                locations_per_county[row["block_geoid"][:5]] += 1
-    return FccSummary(rows, flag_combinations, locations_per_county)
+                county = row["block_geoid"][:5]
+                locations_per_county[county] += 1
+                county_rollups[f"{county}:locations"] += 1
+                for name, column in FLAG_COLUMNS:
+                    county_rollups[f"{county}:{name}"] += int(row[column])
+    return FccSummary(rows, flag_combinations, locations_per_county, county_rollups)

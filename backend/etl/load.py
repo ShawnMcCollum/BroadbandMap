@@ -14,9 +14,11 @@ from etl.fcc import LocationRow, read_locations
 from etl.files import check_files, find_fcc_file, tiger_path
 from etl.reconcile import Counts, database_counts, differences
 from etl.tiger import LEVELS, read_level
-from served_unserved.models import ServedStatus
+from served_unserved.models import Rollup, ServedStatus
+from served_unserved.rollups import build_rollups
 
 LOADER_MODELS: tuple[type[models.Model], ...] = (
+    Rollup,
     ServedStatus,
     Location,
     Release,
@@ -68,9 +70,14 @@ def check_geometries() -> None:
 def tally(rows: Iterable[LocationRow], counts: Counts) -> Iterator[LocationRow]:
     """Pass the rows through, counting each one as it goes by."""
     for row in rows:
+        county = row.block_geoid[:5]
         counts.rows["location"] += 1
         counts.flag_combinations[row.flags] += 1
-        counts.locations_per_county[row.block_geoid[:5]] += 1
+        counts.locations_per_county[county] += 1
+        counts.county_rollups[f"{county}:locations"] += 1
+        counts.county_rollups[f"{county}:any_100_20"] += row.any_100_20
+        counts.county_rollups[f"{county}:wired_100_20"] += row.wired_100_20
+        counts.county_rollups[f"{county}:terrestrial_100_20"] += row.terrestrial_100_20
         yield row
 
 
@@ -153,6 +160,10 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
         )
         source.rows["served_status"] = count
         written(ServedStatus, count, began)
+
+        began = time.monotonic()
+        count = build_rollups(release)
+        written(Rollup, count, began)
 
         progress("Checking foreign keys")
         try:

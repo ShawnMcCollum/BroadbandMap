@@ -95,6 +95,13 @@ application keeps running meanwhile. If a file is missing or malformed, or the
 loaded counts do not match the files, it stops with an error and leaves the
 database unchanged.
 
+Each data load also counts the Served/Not served locations in every county. To
+rebuild those counts from the loaded data without a full reload, run:
+
+```powershell
+docker compose run --rm backend python manage.py build_rollups
+```
+
 ### Checks
 
 Formatting, lint, type checks and tests run inside the containers:
@@ -124,6 +131,7 @@ Architectural and scope decisions are recorded in
 - [0005 — Census TIGER/Line 2020 for boundary geometries](docs/decisions/0005-census-tiger-2020-boundaries.md)
 - [0006 — Data model for locations and boundaries](docs/decisions/0006-data-model-for-locations-and-boundaries.md)
 - [0007 — Loading and verifying the source data](docs/decisions/0007-loading-and-verifying-the-source-data.md)
+- [0008 — Served/Not served rollups by geography](docs/decisions/0008-served-not-served-rollups.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

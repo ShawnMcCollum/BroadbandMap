@@ -5,7 +5,7 @@ import pytest
 from bdc.models import Location, Release
 from geography.models import Block, BlockGroup, County, State, Tract
 from geography.tests.helpers import boundary_fields
-from served_unserved.models import ServedStatus
+from served_unserved.models import Rollup, ServedStatus
 
 
 @pytest.fixture
@@ -67,4 +67,17 @@ def served_status(release: Release, location: Location) -> ServedStatus:
         any_100_20=True,
         wired_100_20=True,
         terrestrial_100_20=True,
+    )
+
+
+@pytest.fixture
+def rollup(release: Release) -> Rollup:
+    return Rollup.objects.create(
+        release=release,
+        level="county",
+        code="39049",
+        locations=10,
+        any_100_20=8,
+        wired_100_20=4,
+        terrestrial_100_20=6,
     )
