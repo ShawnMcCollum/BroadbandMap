@@ -5,12 +5,36 @@ from django.db import IntegrityError, transaction
 from django.db.models import ProtectedError
 
 from bdc.models import Location, Release
-from served_unserved.models import ServedStatus
+from served_unserved.models import Rollup, ServedStatus
 
 # Flags are written (any, wired, terrestrial). Wired implies terrestrial, which
 # implies any.
 ACCEPTED = ["000", "100", "101", "111"]
 REJECTED = ["001", "010", "011", "110"]
+
+VALID_ROLLUP = {
+    "level": "county",
+    "code": "39049",
+    "locations": 10,
+    "any_100_20": 8,
+    "terrestrial_100_20": 6,
+    "wired_100_20": 4,
+}
+# (changes to VALID_ROLLUP, name of the constraint that rejects the result)
+REJECTED_ROLLUPS = [
+    ({"code": "3904"}, "served_unserved_rollup_code_fits_level"),
+    ({"code": "390490"}, "served_unserved_rollup_code_fits_level"),
+    ({"code": "3904a"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "tract", "code": "39049000110"}, "served_unserved_rollup_code_fits_level"),
+    (
+        {"locations": 0, "any_100_20": 0, "terrestrial_100_20": 0, "wired_100_20": 0},
+        "served_unserved_rollup_has_locations",
+    ),
+    ({"any_100_20": 11}, "served_unserved_rollup_any_within_locations"),
+    ({"terrestrial_100_20": 9}, "served_unserved_rollup_terrestrial_within_any"),
+    ({"wired_100_20": 7}, "served_unserved_rollup_wired_within_terrestrial"),
+    ({"wired_100_20": -1}, "served_unserved_rollup_wired_100_20_check"),
+]
 
 
 def make_status(release: Release, location: Location, flags: str = "111") -> ServedStatus:
@@ -21,6 +45,10 @@ def make_status(release: Release, location: Location, flags: str = "111") -> Ser
         wired_100_20=flags[1] == "1",
         terrestrial_100_20=flags[2] == "1",
     )
+
+
+def make_rollup(release: Release, **changes: object) -> Rollup:
+    return Rollup.objects.create(release=release, **{**VALID_ROLLUP, **changes})
 
 
 @pytest.mark.parametrize("flags", ACCEPTED)
@@ -71,3 +99,45 @@ def test_location_with_statuses_cannot_be_deleted(
 ) -> None:
     with pytest.raises(ProtectedError):
         location.delete()
+
+
+def test_valid_rollup_is_accepted(release: Release) -> None:
+    make_rollup(release)
+
+    assert Rollup.objects.count() == 1
+
+
+@pytest.mark.parametrize(("changes", "constraint"), REJECTED_ROLLUPS)
+def test_invalid_rollups_are_rejected(
+    release: Release, changes: dict[str, object], constraint: str
+) -> None:
+    with pytest.raises(IntegrityError, match=constraint), transaction.atomic():
+        make_rollup(release, **changes)
+
+
+def test_area_appears_once_per_release(release: Release, rollup: Rollup) -> None:
+    with (
+        pytest.raises(IntegrityError, match="served_unserved_rollup_unique_area_per_release"),
+        transaction.atomic(),
+    ):
+        make_rollup(release)
+
+
+def test_area_can_appear_in_two_releases(release: Release, rollup: Rollup) -> None:
+    other = Release.objects.create(
+        filing_period="J26", as_of=date(2026, 6, 30), processed_on=date(2026, 9, 29)
+    )
+
+    make_rollup(other)
+
+    assert Rollup.objects.filter(code="39049").count() == 2
+
+
+def test_deleting_a_release_deletes_its_rollups(release: Release, rollup: Rollup) -> None:
+    release.delete()
+
+    assert Rollup.objects.count() == 0
+
+
+def test_rollup_str(rollup: Rollup) -> None:
+    assert str(rollup) == "County 39049 in December 2025 (processed 2026-09-29)"

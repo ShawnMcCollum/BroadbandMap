@@ -39,3 +39,9 @@ def test_fcc_summary_counts_the_fixture_csv(tmp_path: Path) -> None:
     assert summary.rows == 31
     assert summary.flag_combinations == {"0,0,0": 1, "1,0,0": 10, "1,0,1": 10, "1,1,1": 10}
     assert summary.locations_per_county == {"39055": 31}
+    assert summary.county_rollups == {
+        "39055:locations": 31,
+        "39055:any_100_20": 30,
+        "39055:wired_100_20": 10,
+        "39055:terrestrial_100_20": 20,
+    }

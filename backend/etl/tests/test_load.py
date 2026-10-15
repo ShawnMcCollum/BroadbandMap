@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from django.db import transaction
+from django.db.models import F
 from pytest import MonkeyPatch
 
 from bdc.models import Location, Release
@@ -22,7 +23,8 @@ from geography.models import (
     State,
     Tract,
 )
-from served_unserved.models import ServedStatus
+from served_unserved.models import Rollup, ServedStatus
+from served_unserved.rollups import build_rollups
 
 pytestmark = pytest.mark.django_db
 
@@ -35,6 +37,7 @@ FIXTURE_COUNTS = {
     "Place": 1,
     "CountySubdivision": 2,
     "Location": 31,
+    "Rollup": 1,
     "ServedStatus": 31,
     "Release": 1,
 }
@@ -72,6 +75,12 @@ def test_result_reports_matching_counts(tmp_path: Path) -> None:
     }
     assert result.source.flag_combinations == {"0,0,0": 1, "1,0,0": 10, "1,0,1": 10, "1,1,1": 10}
     assert result.source.locations_per_county == {"39055": 31}
+    assert result.source.county_rollups == {
+        "39055:locations": 31,
+        "39055:any_100_20": 30,
+        "39055:wired_100_20": 10,
+        "39055:terrestrial_100_20": 20,
+    }
     assert json.dumps(result.as_dict())
 
 
@@ -161,6 +170,17 @@ def test_location_and_status_rows(tmp_path: Path) -> None:
     assert ServedStatus.objects.exclude(release=Release.objects.get()).count() == 0
 
 
+def test_builds_the_county_rollup(tmp_path: Path) -> None:
+    load(tmp_path)
+
+    rollup = Rollup.objects.get()
+    assert rollup.release == Release.objects.get()
+    assert rollup.level == "county"
+    assert rollup.code == "39055"
+    counts = (rollup.locations, rollup.any_100_20, rollup.wired_100_20, rollup.terrestrial_100_20)
+    assert counts == (31, 30, 10, 20)
+
+
 def test_release_comes_from_the_file_name(tmp_path: Path) -> None:
     result = load(tmp_path)
 
@@ -223,6 +243,22 @@ def test_reconciliation_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyP
     assert table_counts() == EMPTY_COUNTS
 
 
+def test_rollup_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    def short_by_one(release: Release) -> int:
+        count = build_rollups(release)
+        Rollup.objects.filter(release=release).update(wired_100_20=F("wired_100_20") - 1)
+        return count
+
+    monkeypatch.setattr("etl.load.build_rollups", short_by_one)
+
+    with pytest.raises(
+        ReconciliationError, match=r"county_rollups\[39055:wired_100_20\]: source 10, database 9"
+    ):
+        load(tmp_path)
+
+    assert table_counts() == EMPTY_COUNTS
+
+
 def test_progress_reports_each_table(tmp_path: Path) -> None:
     messages: list[str] = []
 
@@ -230,6 +266,7 @@ def test_progress_reports_each_table(tmp_path: Path) -> None:
 
     assert any(message.startswith("census blocks: 49 rows") for message in messages)
     assert any(message.startswith("served statuses: 31 rows") for message in messages)
+    assert any(message.startswith("rollups: 1 rows") for message in messages)
     assert "Reconciling counts" in messages
 
 
