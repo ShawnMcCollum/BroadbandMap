@@ -9,6 +9,27 @@ FIXTURES = Path(__file__).parent / "fixtures"
 MALFORMED = FIXTURES / "malformed"
 FCC_STEM = "bdc_39_fixed_broadband_served_unserved_D25_29sep2026"
 
+# The fixture CSV's rollups: (level, code, locations, any, wired, terrestrial), sorted.
+FIXTURE_ROLLUPS = [
+    ("block", "390553120001004", 1, 0, 0, 0),
+    ("block", "390553120001013", 5, 5, 0, 5),
+    ("block", "390553120002011", 8, 8, 5, 6),
+    ("block", "390553120002014", 7, 7, 5, 6),
+    ("block", "390553120002016", 3, 3, 0, 3),
+    ("block", "390553120002019", 7, 7, 0, 0),
+    ("block_group", "390553120001", 6, 5, 0, 5),
+    ("block_group", "390553120002", 25, 25, 10, 15),
+    ("county", "39055", 31, 30, 10, 20),
+    ("h3_res8", "882ab14c07fffff", 7, 7, 0, 0),
+    ("h3_res8", "882ab14c65fffff", 1, 1, 0, 1),
+    ("h3_res8", "882ab14e23fffff", 1, 1, 0, 1),
+    ("h3_res8", "882ab14e27fffff", 7, 7, 0, 7),
+    ("h3_res8", "882ab14f31fffff", 1, 1, 0, 1),
+    ("h3_res8", "882ab14f33fffff", 13, 13, 10, 10),
+    ("h3_res8", "882ab14f59fffff", 1, 0, 0, 0),
+    ("tract", "39055312000", 31, 30, 10, 20),
+]
+
 
 def fixture_csv() -> str:
     """The fixture CSV's text."""

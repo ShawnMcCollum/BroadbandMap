@@ -63,44 +63,51 @@ def boundary_counts(tiger_dir: Path, state_fips: str = "39") -> dict[str, int]:
     return counts
 
 
-# (name in the county rollup counts, column in the FCC CSV)
-FLAG_COLUMNS = (
-    ("any_100_20", "any_dl100_ul20"),
-    ("wired_100_20", "wired_dl100_ul20"),
-    ("terrestrial_100_20", "terrestrial_dl100_ul20"),
-)
+FLAG_COLUMNS = ("any_dl100_ul20", "wired_dl100_ul20", "terrestrial_dl100_ul20")
+
+# Where each rollup level's code is in a CSV row: (column, length of the code at its start)
+AREA_CODES = {
+    "county": ("block_geoid", 5),
+    "tract": ("block_geoid", 11),
+    "block_group": ("block_geoid", 12),
+    "block": ("block_geoid", 15),
+    "h3_res8": ("h3_res8_id", 15),
+}
 
 
 class FccSummary(NamedTuple):
     rows: int
     flag_combinations: Counter[str]
     locations_per_county: Counter[str]
-    county_rollups: Counter[str]
+    rollups: dict[str, dict[str, tuple[int, int, int, int]]]
 
 
 def fcc_summary(zip_path: Path) -> FccSummary:
-    """Count the rows, flag combinations, locations per county and county rollup counts.
+    """Count the rows, flag combinations, locations per county and every area's rollup counts.
 
-    The rollup counts are the locations and the three served counts of each county, keyed like
-    ``"39055:wired_100_20"``.
+    The rollups map level -> code -> (locations, any, wired, terrestrial). Each code is computed
+    from the CSV columns, as the first characters of the block GEOID or the H3 cell.
     """
     rows = 0
     flag_combinations: Counter[str] = Counter()
     locations_per_county: Counter[str] = Counter()
-    county_rollups: Counter[str] = Counter()
+    areas: dict[str, dict[str, list[int]]] = {level: {} for level in AREA_CODES}
     with zipfile.ZipFile(zip_path) as archive:
         (member,) = archive.namelist()
         with archive.open(member) as raw:
             for row in csv.DictReader(io.TextIOWrapper(raw, encoding="utf-8", newline="")):
                 rows += 1
-                flags = ",".join(
-                    row[column]
-                    for column in ("any_dl100_ul20", "wired_dl100_ul20", "terrestrial_dl100_ul20")
-                )
-                flag_combinations[flags] += 1
-                county = row["block_geoid"][:5]
-                locations_per_county[county] += 1
-                county_rollups[f"{county}:locations"] += 1
-                for name, column in FLAG_COLUMNS:
-                    county_rollups[f"{county}:{name}"] += int(row[column])
-    return FccSummary(rows, flag_combinations, locations_per_county, county_rollups)
+                served = [int(row[column]) for column in FLAG_COLUMNS]
+                flag_combinations[",".join(row[column] for column in FLAG_COLUMNS)] += 1
+                locations_per_county[row["block_geoid"][:5]] += 1
+                for level, (column, length) in AREA_CODES.items():
+                    counts = areas[level].setdefault(row[column][:length], [0, 0, 0, 0])
+                    counts[0] += 1
+                    counts[1] += served[0]
+                    counts[2] += served[1]
+                    counts[3] += served[2]
+    rollups = {
+        level: {code: (c[0], c[1], c[2], c[3]) for code, c in codes.items()}
+        for level, codes in areas.items()
+    }
+    return FccSummary(rows, flag_combinations, locations_per_county, rollups)

@@ -1,7 +1,7 @@
 """Reconcile a load of the real files in /data/raw against independent readers.
 
 Deselected by default; run it with ``pytest -m full_data``. It does two full
-loads, so it takes about 13 minutes.
+loads, so it takes about 18 minutes.
 """
 
 from collections.abc import Iterator
@@ -57,6 +57,10 @@ PARENT_PREFIXES: list[tuple[type[Boundary], str, int]] = [
     (Place, "state_id", 2),
     (CountySubdivision, "county_id", 5),
 ]
+# The selection rule is checked for every area at the levels with up to 10,000 areas, and for
+# every 100th area, in code order, at the block and H3 levels: all of them would take about
+# 11 minutes.
+SELECTION_STEPS = {"county": 1, "tract": 1, "block_group": 1, "block": 100, "h3_res8": 100}
 
 
 @pytest.fixture(scope="module")
@@ -154,20 +158,19 @@ def test_block_internal_points_lie_in_their_county() -> None:
 
 
 @pytest.mark.usefixtures("loaded")
-def test_county_rollups_match_the_source(expected_fcc: sources.FccSummary) -> None:
-    rows = Rollup.objects.filter(level=RollupLevel.COUNTY).values_list("code", *COUNT_FIELDS)
-    found = {
-        f"{code}:{name}": value
-        for code, *values in rows
-        for name, value in zip(COUNT_FIELDS, values, strict=True)
-    }
+@pytest.mark.parametrize("level", list(RollupLevel))
+def test_rollups_match_the_source(level: str, expected_fcc: sources.FccSummary) -> None:
+    rows = Rollup.objects.filter(level=level).values_list("code", *COUNT_FIELDS)
+    found = {code: tuple(values) for code, *values in rows}
 
-    assert found == expected_fcc.county_rollups
+    assert found == expected_fcc.rollups[level]
 
 
-def test_each_county_key_selects_what_its_rollup_counts(loaded: LoadResult) -> None:
+@pytest.mark.parametrize("level", list(RollupLevel))
+def test_each_key_selects_what_its_rollup_counts(loaded: LoadResult, level: str) -> None:
     release = Release.objects.get(pk=loaded.release_id)
-    for rollup in Rollup.objects.filter(release=release, level=RollupLevel.COUNTY):
+    rollups = list(Rollup.objects.filter(release=release, level=level).order_by("code"))
+    for rollup in rollups[:: SELECTION_STEPS[level]]:
         totals = (
             statuses_in(release, rollup.level, rollup.code)
             .order_by()

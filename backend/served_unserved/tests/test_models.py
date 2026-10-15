@@ -25,7 +25,13 @@ REJECTED_ROLLUPS = [
     ({"code": "3904"}, "served_unserved_rollup_code_fits_level"),
     ({"code": "390490"}, "served_unserved_rollup_code_fits_level"),
     ({"code": "3904a"}, "served_unserved_rollup_code_fits_level"),
-    ({"level": "tract", "code": "39049000110"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "tract", "code": "39049"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "block_group", "code": "39049000110"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "block", "code": "39049000110100"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "block", "code": "882a91ae3bfffff"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "h3_res8", "code": "882A91AE3BFFFFF"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "h3_res8", "code": "882a91ae3bffff"}, "served_unserved_rollup_code_fits_level"),
+    ({"level": "place", "code": "3918000"}, "served_unserved_rollup_code_fits_level"),
     (
         {"locations": 0, "any_100_20": 0, "terrestrial_100_20": 0, "wired_100_20": 0},
         "served_unserved_rollup_has_locations",
@@ -34,6 +40,14 @@ REJECTED_ROLLUPS = [
     ({"terrestrial_100_20": 9}, "served_unserved_rollup_terrestrial_within_any"),
     ({"wired_100_20": 7}, "served_unserved_rollup_wired_within_terrestrial"),
     ({"wired_100_20": -1}, "served_unserved_rollup_wired_100_20_check"),
+]
+# (level, a code of that level's form)
+VALID_CODES = [
+    ("county", "39049"),
+    ("tract", "39049000110"),
+    ("block_group", "390490001101"),
+    ("block", "390490001101000"),
+    ("h3_res8", "882a91ae3bfffff"),
 ]
 
 
@@ -115,6 +129,14 @@ def test_invalid_rollups_are_rejected(
         make_rollup(release, **changes)
 
 
+@pytest.mark.parametrize(("level", "code"), VALID_CODES)
+def test_each_level_accepts_its_codes(release: Release, level: str, code: str) -> None:
+    make_rollup(release, level=level, code=code)
+
+    rollup = Rollup.objects.get()
+    assert (rollup.level, rollup.code) == (level, code)
+
+
 def test_area_appears_once_per_release(release: Release, rollup: Rollup) -> None:
     with (
         pytest.raises(IntegrityError, match="served_unserved_rollup_unique_area_per_release"),
@@ -141,3 +163,11 @@ def test_deleting_a_release_deletes_its_rollups(release: Release, rollup: Rollup
 
 def test_rollup_str(rollup: Rollup) -> None:
     assert str(rollup) == "County 39049 in December 2025 (processed 2026-09-29)"
+
+
+def test_h3_rollup_str(release: Release) -> None:
+    rollup = make_rollup(release, level="h3_res8", code="882a91ae3bfffff")
+
+    assert str(rollup) == (
+        "H3 resolution-8 cell 882a91ae3bfffff in December 2025 (processed 2026-09-29)"
+    )

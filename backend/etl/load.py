@@ -12,9 +12,9 @@ from etl.bulk import copy_rows
 from etl.errors import LoadError, ReconciliationError
 from etl.fcc import LocationRow, read_locations
 from etl.files import check_files, find_fcc_file, tiger_path
-from etl.reconcile import Counts, database_counts, differences
+from etl.reconcile import Counts, database_counts, differences, expected_rollup_totals
 from etl.tiger import LEVELS, read_level
-from served_unserved.models import Rollup, ServedStatus
+from served_unserved.models import Rollup, RollupLevel, ServedStatus
 from served_unserved.rollups import build_rollups
 
 LOADER_MODELS: tuple[type[models.Model], ...] = (
@@ -65,6 +65,18 @@ def check_geometries() -> None:
                 f"{level.model._meta.verbose_name_plural}: "
                 f"invalid geometry for GEOID {', '.join(geoids)}"
             )
+
+
+def analyze_tables(*tables: type[models.Model]) -> None:
+    """Refresh the planner's statistics on tables just filled, so queries on them plan well.
+
+    After TRUNCATE, PostgreSQL treats a table as empty until it is analyzed. It then plans
+    aggregates over millions of rows as nested loops with on-disk sorts.
+    """
+    quote = connection.ops.quote_name
+    names = ", ".join(quote(model._meta.db_table) for model in tables)
+    with connection.cursor() as cursor:
+        cursor.execute(f"ANALYZE {names}")
 
 
 def tally(rows: Iterable[LocationRow], counts: Counts) -> Iterator[LocationRow]:
@@ -161,9 +173,15 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
         source.rows["served_status"] = count
         written(ServedStatus, count, began)
 
-        began = time.monotonic()
-        count = build_rollups(release)
-        written(Rollup, count, began)
+        progress("Analyzing locations and statuses")
+        analyze_tables(Location, ServedStatus)
+
+        for rollup_level in RollupLevel:
+            began = time.monotonic()
+            count = build_rollups(release, rollup_level)
+            progress(
+                f"rollups by {rollup_level}: {count:,} rows in {time.monotonic() - began:.0f} s"
+            )
 
         progress("Checking foreign keys")
         try:
@@ -171,6 +189,7 @@ def load_served_unserved(data_dir: Path, progress: Callable[[str], None] = _quie
         except IntegrityError as error:
             raise LoadError(f"foreign key check failed: {error}") from error
 
+        source.rollup_totals = expected_rollup_totals(source.county_rollups)
         progress("Reconciling counts")
         database = database_counts(release)
         problems = differences(source, database)

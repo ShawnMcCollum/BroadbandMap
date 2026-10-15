@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-14
+- **Amended by:** [0009](0009-rollups-for-finer-levels.md), which adds the tract, block group, block and H3 levels
 
 ## Context
 

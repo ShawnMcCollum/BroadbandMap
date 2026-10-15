@@ -1,6 +1,10 @@
 """Served/Unserved status of each location in each FCC release, and rollups of it by area."""
 
+from dataclasses import dataclass
+
 from django.db import models
+from django.db.models.expressions import Combinable
+from django.db.models.functions import Left
 
 
 class ServedStatus(models.Model):
@@ -51,18 +55,71 @@ class RollupLevel(models.TextChoices):
     """Geographic levels that have rollups."""
 
     COUNTY = "county", "County"
+    TRACT = "tract", "Census tract"
+    BLOCK_GROUP = "block_group", "Block group"
+    BLOCK = "block", "Census block"
+    H3_RES8 = "h3_res8", "H3 resolution-8 cell"
 
 
-# Length of each level's GEOID. An area's code is its GEOID, and a location lies in the area
-# when its block GEOID starts with the code.
-GEOID_LENGTHS: dict[str, int] = {RollupLevel.COUNTY: 5}
+@dataclass(frozen=True)
+class AreaKey:
+    """How one rollup level names its areas, and which locations lie in each.
+
+    ``pattern`` is the regular expression a code matches in full, and ``form`` says the same in
+    words. ``group_by`` gives the code of a status's area, as an expression over ServedStatus.
+    ``lookup`` is the ServedStatus lookup that selects an area's statuses by its code.
+    """
+
+    pattern: str
+    form: str
+    group_by: Combinable
+    lookup: str
+
+
+# A census code is the area's GEOID, and an H3 code is the cell index. A location is in a
+# county, tract or block group when its block GEOID starts with the code, and in a block or an
+# H3 cell when its block GEOID or cell index is the code. startswith is served by the
+# varchar_pattern_ops index on block_id. A string range would not work: in the en_US
+# collation, "39049" <= block_id < "3904:" matches nothing.
+AREA_KEYS: dict[str, AreaKey] = {
+    RollupLevel.COUNTY: AreaKey(
+        pattern="[0-9]{5}",
+        form="5 digits",
+        group_by=Left("location__block__geoid", 5),
+        lookup="location__block__geoid__startswith",
+    ),
+    RollupLevel.TRACT: AreaKey(
+        pattern="[0-9]{11}",
+        form="11 digits",
+        group_by=Left("location__block__geoid", 11),
+        lookup="location__block__geoid__startswith",
+    ),
+    RollupLevel.BLOCK_GROUP: AreaKey(
+        pattern="[0-9]{12}",
+        form="12 digits",
+        group_by=Left("location__block__geoid", 12),
+        lookup="location__block__geoid__startswith",
+    ),
+    RollupLevel.BLOCK: AreaKey(
+        pattern="[0-9]{15}",
+        form="15 digits",
+        group_by=models.F("location__block__geoid"),
+        lookup="location__block__geoid",
+    ),
+    RollupLevel.H3_RES8: AreaKey(
+        pattern="[0-9a-f]{15}",
+        form="15 lowercase hex characters",
+        group_by=models.F("location__h3_res8"),
+        lookup="location__h3_res8",
+    ),
+}
 
 
 def code_fits_level() -> models.CheckConstraint:
-    """The level has rollups, and the code is a GEOID of that level's length."""
+    """The level has rollups, and the code has that level's form."""
     condition = models.Q()
-    for level, length in GEOID_LENGTHS.items():
-        condition |= models.Q(level=level, code__regex=rf"^[0-9]{{{length}}}$")
+    for level, key in AREA_KEYS.items():
+        condition |= models.Q(level=level, code__regex=f"^{key.pattern}$")
     return models.CheckConstraint(
         condition=condition, name="served_unserved_rollup_code_fits_level"
     )
@@ -89,8 +146,8 @@ class Rollup(models.Model):
     code = models.CharField(
         max_length=15,
         help_text=(
-            'GEOID of the area at its level, e.g. "39049" for Franklin County. '
-            "A location is in the area when its block GEOID starts with this code."
+            'Code of the area: its GEOID at a census level, e.g. "39049" for Franklin County, '
+            "or its cell index at the H3 level."
         ),
     )
     locations = models.PositiveIntegerField(
