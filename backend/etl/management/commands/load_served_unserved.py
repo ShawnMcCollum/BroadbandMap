@@ -7,16 +7,17 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 
 from bdc.models import Release
+from core.maintenance import vacuum_analyze
 from etl.errors import LoadError
 from etl.files import DEFAULT_DATA_DIR
-from etl.load import load_served_unserved
+from etl.load import LOADER_MODELS, load_served_unserved
 
 
 class Command(BaseCommand):
     help = (
         "Add the release in an FCC Served/Unserved file to the database, beside the releases "
         "already loaded. The first load also loads the Census boundary files from the data "
-        "directory."
+        "directory. Once the load has committed, the loaded tables are vacuumed and analyzed."
     )
 
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -58,3 +59,4 @@ class Command(BaseCommand):
                 f"Loaded {release}: {locations:,} locations in {result.seconds:.0f} s."
             )
         )
+        vacuum_analyze(LOADER_MODELS, self.stdout.write)

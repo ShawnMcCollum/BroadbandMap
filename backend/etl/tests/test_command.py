@@ -1,3 +1,4 @@
+import re
 from io import StringIO
 from pathlib import Path
 
@@ -5,6 +6,8 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+from core.tests.helpers import table_stats
+from etl.load import LOADER_MODELS
 from etl.management.commands.load_served_unserved import Command
 from etl.tests.helpers import J25_STEM, j25_csv, make_data_dir
 from served_unserved.models import ServedStatus
@@ -19,6 +22,23 @@ def test_command_loads_and_reports(tmp_path: Path) -> None:
     assert "census blocks: 49 rows" in out.getvalue()
     assert "Loaded December 2025 (processed 2026-09-29): 31 locations in" in out.getvalue()
     assert ServedStatus.objects.count() == 31
+
+
+@pytest.mark.django_db(transaction=True)
+def test_command_vacuums_and_analyzes_the_loaded_tables(tmp_path: Path) -> None:
+    before = table_stats(LOADER_MODELS)
+    out = StringIO()
+
+    call_command("load_served_unserved", data_dir=make_data_dir(tmp_path), stdout=out)
+
+    after = table_stats(LOADER_MODELS)
+    *_, loaded, vacuumed = out.getvalue().splitlines()
+    assert loaded.startswith("Loaded December 2025 (processed 2026-09-29): 31 locations in")
+    assert re.fullmatch(r"Vacuumed and analyzed 10 tables in \d+ s", vacuumed)
+    for model in LOADER_MODELS:
+        table = model._meta.db_table
+        assert after[table].vacuum_count == before[table].vacuum_count + 1, table
+        assert after[table].analyzed_after_vacuum(), table
 
 
 @pytest.mark.django_db
