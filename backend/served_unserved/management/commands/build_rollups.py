@@ -6,16 +6,17 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from bdc.models import Release
+from core.maintenance import vacuum_analyze
 from geography.models import Block
-from served_unserved.models import RollupLevel
+from served_unserved.models import Rollup, RollupLevel
 from served_unserved.rollups import build_rollups
 
 
 class Command(BaseCommand):
     help = (
-        "Rebuild the Served/Not served rollups of every loaded release from its statuses. "
-        "A data load must first have assigned every census block to its place and county "
-        "subdivision."
+        "Rebuild the Served/Not served rollups of every loaded release from its statuses, then "
+        "vacuum and analyze the rollups. A data load must first have assigned every census "
+        "block to its place and county subdivision."
     )
 
     def handle(self, *args: Any, **options: Any) -> None:
@@ -32,3 +33,4 @@ class Command(BaseCommand):
             with transaction.atomic():
                 count = sum(build_rollups(release, level) for level in RollupLevel)
             self.stdout.write(self.style.SUCCESS(f"Built {count:,} rollups for {release}."))
+        vacuum_analyze((Rollup,), self.stdout.write)

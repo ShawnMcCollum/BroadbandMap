@@ -104,6 +104,12 @@ database unchanged. The application keeps running meanwhile, and no query
 waits for a data load
 ([ADR 0013](docs/decisions/0013-release-scoped-data-loads.md)).
 
+Once the load has committed, the command vacuums and analyzes the loaded
+tables, which takes a few seconds: the space of any rows the load deleted is
+reused by the next one, and queries are planned with statistics that include
+the new release
+([ADR 0014](docs/decisions/0014-vacuum-after-each-data-load.md)).
+
 Each data load also assigns every census block to the place and county
 subdivision that hold its internal point, then counts the Served/Not served
 locations in every county, census tract, block group, census block, H3 cell,
@@ -113,6 +119,8 @@ without a full reload, run:
 ```powershell
 docker compose run --rm backend python manage.py build_rollups
 ```
+
+It then vacuums and analyzes the rollups.
 
 A database loaded before places and county subdivisions had rollups has
 census blocks without them, and data loads and `build_rollups` stop with an
@@ -177,6 +185,7 @@ Architectural and scope decisions are recorded in
 - [0011 — Shared memory for the database container](docs/decisions/0011-database-shared-memory.md)
 - [0012 — A location's block and H3 cell are stored per release](docs/decisions/0012-location-placement-per-release.md)
 - [0013 — A data load adds one release](docs/decisions/0013-release-scoped-data-loads.md)
+- [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

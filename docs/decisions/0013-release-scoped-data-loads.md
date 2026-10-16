@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
+- **Amended by:** [0014](0014-vacuum-after-each-data-load.md), which vacuums and analyzes the loaded tables after each data load
 
 ## Context
 

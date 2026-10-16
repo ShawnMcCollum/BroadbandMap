@@ -1,3 +1,4 @@
+import re
 from io import StringIO
 
 import pytest
@@ -6,6 +7,7 @@ from django.core.management.base import CommandError
 from pytest import MonkeyPatch
 
 from bdc.models import Release
+from core.tests.helpers import table_stats
 from geography.models import Block
 from served_unserved.models import Rollup, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, build_rollups
@@ -27,6 +29,21 @@ def test_build_rollups_rebuilds_every_release(served_status: ServedStatus) -> No
         ("place", "3918000", 1, 1, 1, 1),
         ("tract", "39049000110", 1, 1, 1, 1),
     ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_build_rollups_vacuums_and_analyzes_the_rollups(served_status: ServedStatus) -> None:
+    before = table_stats((Rollup, ServedStatus))
+    out = StringIO()
+
+    call_command("build_rollups", stdout=out)
+
+    after = table_stats((Rollup, ServedStatus))
+    assert re.fullmatch(r"Vacuumed and analyzed 1 table in \d+ s", out.getvalue().splitlines()[-1])
+    rollups, statuses = "served_unserved_rollup", "served_unserved_servedstatus"
+    assert after[rollups].vacuum_count == before[rollups].vacuum_count + 1
+    assert after[rollups].analyzed_after_vacuum()
+    assert after[statuses].vacuum_count == before[statuses].vacuum_count
 
 
 def test_build_rollups_needs_a_release(db: None) -> None:
