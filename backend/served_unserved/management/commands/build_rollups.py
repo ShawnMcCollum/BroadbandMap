@@ -6,6 +6,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from bdc.generations import advance_generation
 from bdc.models import Release
 from bdc.release_options import add_release_options, release_from_options
 from core.maintenance import vacuum_analyze
@@ -58,6 +59,7 @@ class Command(BaseCommand):
                         for state in states_in_release(current)
                         for level in RollupLevel
                     )
+                    advance_generation(current)
             except WriteLockHeld as error:
                 raise CommandError(str(error)) from error
             self.stdout.write(self.style.SUCCESS(f"Built {count:,} rollups for {release}."))

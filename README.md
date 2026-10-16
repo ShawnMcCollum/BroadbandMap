@@ -221,13 +221,14 @@ are then vacuumed and analyzed. For Ohio, it takes about 15 seconds.
 
 The public, read-only API exposes loaded releases, Served/Not served summaries,
 and county boundaries. The current client test pages use `/api/health/`;
-location drill-down is planned in #26.
+location drill-down uses signed cursors that detect release changes.
 
 | Route | Response |
 |---|---|
 | `/api/v1/releases/` | Loaded release dates and the states each holds |
 | `/api/v1/served-unserved/rollups/?level=county&state=39` | Ohio county counts, wired 100/20 by default |
 | `/api/v1/geographies/county/?state=39` | County GeoJSON, with GEOIDs matching summary codes |
+| `/api/v1/served-unserved/locations/?level=county&code=39049` | Locations behind Franklin County's summary, in FCC location ID order |
 
 For example, from PowerShell after loading Ohio:
 
@@ -256,13 +257,29 @@ the release, and unavailable rollups (503). GeoJSON describes boundaries, not
 release coverage; join its feature IDs to summary codes and leave missing
 observations visibly unclassified.
 
-Every collection is paginated with `count`, `next`, and `previous`. Default
-`page_size` is 100, maximum 1,000 for summaries and 100 for releases/boundaries.
+Releases, summaries and boundaries are paginated with `count`, `next`, and
+`previous`. Default `page_size` is 100, maximum 1,000 for summaries and 100 for
+releases/boundaries.
 County GeoJSON also has a 5 MiB response cap; request fewer features if exceeded.
 Geometry is separate so tables and flag changes do not download polygons again.
 
+Location drill-down requires `level` and `code`, with the same release, state
+and flag selection as summaries. Add `status=served` or `status=not_served` to
+filter the selected flag. It returns location IDs, block GEOIDs, H3 cells and
+the three Boolean flags; it does not infer point coordinates. `area_coverage`
+distinguishes observations from an area outside the release, before the optional
+status filter.
+
+Location pages default to 100 rows, maximum 1,000, with `next` and `previous`
+links and no total count. Follow those links unchanged: they pin the selection
+and resolved release. Any committed load, state deletion or rollup rebuild in
+that release invalidates old cursors with 409 `dataset_changed`; restart without
+the cursor. The generation is release-wide, so even another state's change
+requires a restart. A failed write preserves a traversal. See
+[ADR 0019](docs/decisions/0019-location-cursors.md).
+
 The generated OpenAPI 3.0.3 document is available at
-<http://localhost:8000/api/schema/>. It describes these three implemented
+<http://localhost:8000/api/schema/>. It describes these four implemented
 resources, including validation and errors. The health endpoint
 keeps its separate operational contract.
 
@@ -332,6 +349,7 @@ Architectural and scope decisions are recorded in
 - [0016 — REST API contract and tests](docs/decisions/0016-rest-api-contract-and-tests.md)
 - [0017 — National releases loaded by state](docs/decisions/0017-national-releases-loaded-by-state.md)
 - [0018 — County GeoJSON for initial map output](docs/decisions/0018-county-geojson-map-output.md)
+- [0019 — Location drill-down with release-wide cursor generations](docs/decisions/0019-location-cursors.md)
 - [0017 — A release is national, and a data load adds one state](docs/decisions/0017-national-releases-loaded-by-state.md)
 
 The adopted REST API conventions and implementation guidance are in

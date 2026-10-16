@@ -46,6 +46,7 @@ def test_production_schema_matches_business_contract_and_is_public(api_client: A
     assert set(baseline["paths"]) == {
         "/api/v1/releases/",
         "/api/v1/served-unserved/rollups/",
+        "/api/v1/served-unserved/locations/",
         "/api/v1/geographies/county/",
     }
     assert not any("test_" in path for path in baseline["paths"])

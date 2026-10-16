@@ -1,6 +1,15 @@
 {
   "components": {
     "schemas": {
+      "AreaCoverageEnum": {
+        "description": "* `observed` - observed\n* `no_observations` - no_observations\n* `outside_release_coverage` - outside_release_coverage",
+        "enum": [
+          "observed",
+          "no_observations",
+          "outside_release_coverage"
+        ],
+        "type": "string"
+      },
       "BadRequestProblem": {
         "oneOf": [
           {
@@ -154,6 +163,126 @@
         ],
         "type": "string"
       },
+      "LocationPage": {
+        "properties": {
+          "area_coverage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AreaCoverageEnum"
+              }
+            ],
+            "description": "Area coverage before the optional status filter. An empty filtered page does not imply that the area has no observations.\n\n* `observed` - observed\n* `no_observations` - no_observations\n* `outside_release_coverage` - outside_release_coverage"
+          },
+          "boundary_vintage": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "next": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "previous": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "release": {
+            "$ref": "#/components/schemas/ReleaseSummary"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/LocationResult"
+            },
+            "type": "array"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/LocationSelection"
+          },
+          "threshold": {
+            "$ref": "#/components/schemas/SpeedThreshold"
+          }
+        },
+        "required": [
+          "area_coverage",
+          "boundary_vintage",
+          "next",
+          "previous",
+          "release",
+          "results",
+          "selection",
+          "threshold"
+        ],
+        "type": "object"
+      },
+      "LocationResult": {
+        "properties": {
+          "any_100_20": {
+            "type": "boolean"
+          },
+          "block_geoid": {
+            "type": "string"
+          },
+          "h3_res8": {
+            "type": "string"
+          },
+          "location_id": {
+            "type": "string"
+          },
+          "terrestrial_100_20": {
+            "type": "boolean"
+          },
+          "wired_100_20": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "any_100_20",
+          "block_geoid",
+          "h3_res8",
+          "location_id",
+          "terrestrial_100_20",
+          "wired_100_20"
+        ],
+        "type": "object"
+      },
+      "LocationSelection": {
+        "properties": {
+          "code": {
+            "nullable": true,
+            "type": "string"
+          },
+          "flag": {
+            "$ref": "#/components/schemas/FlagEnum"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LevelEnum"
+          },
+          "state": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/StatusEnum"
+              },
+              {
+                "$ref": "#/components/schemas/NullEnum"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "flag",
+          "level",
+          "state",
+          "status"
+        ],
+        "type": "object"
+      },
       "MultiPolygonGeometry": {
         "properties": {
           "coordinates": {
@@ -186,6 +315,11 @@
           "type"
         ],
         "type": "object"
+      },
+      "NullEnum": {
+        "enum": [
+          null
+        ]
       },
       "Problem": {
         "properties": {
@@ -222,7 +356,7 @@
         "type": "object"
       },
       "ProblemCodeEnum": {
-        "description": "* `parse_error` - parse_error\n* `bad_request` - bad_request\n* `not_authenticated` - not_authenticated\n* `authentication_failed` - authentication_failed\n* `permission_denied` - permission_denied\n* `not_found` - not_found\n* `method_not_allowed` - method_not_allowed\n* `not_acceptable` - not_acceptable\n* `unsupported_media_type` - unsupported_media_type\n* `throttled` - throttled\n* `internal_error` - internal_error\n* `service_unavailable` - service_unavailable\n* `http_error` - http_error",
+        "description": "* `parse_error` - parse_error\n* `bad_request` - bad_request\n* `not_authenticated` - not_authenticated\n* `authentication_failed` - authentication_failed\n* `permission_denied` - permission_denied\n* `not_found` - not_found\n* `method_not_allowed` - method_not_allowed\n* `not_acceptable` - not_acceptable\n* `unsupported_media_type` - unsupported_media_type\n* `throttled` - throttled\n* `internal_error` - internal_error\n* `service_unavailable` - service_unavailable\n* `dataset_changed` - dataset_changed\n* `http_error` - http_error",
         "enum": [
           "parse_error",
           "bad_request",
@@ -236,6 +370,7 @@
           "throttled",
           "internal_error",
           "service_unavailable",
+          "dataset_changed",
           "http_error"
         ],
         "type": "string"
@@ -437,6 +572,14 @@
           "name"
         ],
         "type": "object"
+      },
+      "StatusEnum": {
+        "description": "* `served` - served\n* `not_served` - not_served",
+        "enum": [
+          "served",
+          "not_served"
+        ],
+        "type": "string"
       },
       "SummaryCoverageEnum": {
         "description": "* `stored_rollups_only` - stored_rollups_only\n* `observed` - observed\n* `no_observations` - no_observations\n* `outside_release_coverage` - outside_release_coverage",
@@ -700,6 +843,194 @@
             "description": "Problem Details response"
           },
           "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/served-unserved/locations/": {
+      "get": {
+        "description": "Locations in one area, ordered by ascending FCC location_id. Signed cursors pin release dates, selection, page size, and release-wide generation. A committed load, state deletion, or rollup rebuild requires restarting without a cursor (409 dataset_changed). No total count or point geometries are returned. area_coverage describes observations before the optional status filter.",
+        "operationId": "served_unserved_locations_list",
+        "parameters": [
+          {
+            "description": "Data period in YYYY-MM-DD form. Supply both dates or neither; omission selects latest.",
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "maxLength": 15,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "* `any` - any\n* `wired` - wired\n* `terrestrial` - terrestrial",
+            "in": "query",
+            "name": "flag",
+            "schema": {
+              "default": "wired",
+              "enum": [
+                "any",
+                "wired",
+                "terrestrial"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "* `county` - County\n* `tract` - Census tract\n* `block_group` - Block group\n* `block` - Census block\n* `h3_res8` - H3 resolution-8 cell\n* `place` - Place\n* `county_subdivision` - County subdivision",
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "enum": [
+                "county",
+                "tract",
+                "block_group",
+                "block",
+                "h3_res8",
+                "place",
+                "county_subdivision"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "FCC processing date in YYYY-MM-DD form; requires as_of.",
+            "in": "query",
+            "name": "processed_on",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional state FIPS code. For H3, limits contributions rather than cell containment.",
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "maxLength": 2,
+              "minLength": 2,
+              "pattern": "^[0-9]{2}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "* `served` - served\n* `not_served` - not_served",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "served",
+                "not_served"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationPage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "409": {
             "content": {
               "application/problem+json": {
                 "schema": {

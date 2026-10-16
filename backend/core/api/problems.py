@@ -29,7 +29,18 @@ class ServiceUnavailable(APIException):
     default_code = "service_unavailable"
 
 
+class DatasetChanged(APIException):
+    status_code = 409
+    default_detail = "The dataset changed. Restart pagination without a cursor."
+    default_code = "dataset_changed"
+
+
 ERROR_DETAILS: dict[str, tuple[int, str, str]] = {
+    "dataset_changed": (
+        409,
+        "Conflict",
+        "The dataset changed. Restart pagination without a cursor.",
+    ),
     "validation_error": (400, "Bad Request", "Request validation failed."),
     "parse_error": (400, "Bad Request", "The request body could not be parsed."),
     "bad_request": (400, "Bad Request", "The request is invalid."),
@@ -149,6 +160,7 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> JsonRespon
         (UnsupportedMediaType, "unsupported_media_type"),
         (Throttled, "throttled"),
         (ServiceUnavailable, "service_unavailable"),
+        (DatasetChanged, "dataset_changed"),
     )
     for exception_type, code in codes:
         if isinstance(exc, exception_type):

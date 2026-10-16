@@ -3,13 +3,13 @@
 These guidelines define the API conventions adopted by
 [ADR 0016](decisions/0016-rest-api-contract-and-tests.md).
 Issue #62 implements the shared HTTP foundation described here. Issue #3 adds release discovery,
-summary reads, and county GeoJSON. Location endpoints remain in #26; operational API work remains
+summary reads, and county GeoJSON. Issue #26 adds location drill-down; operational API work remains
 in #15, and multi-state release identity is settled by
 [ADR 0017](decisions/0017-national-releases-loaded-by-state.md). The writer guard from #45 is
 already implemented and is independent of HTTP access policy.
 
 The general resource paths and numerical starting limits below guide endpoint planning;
-section 11 specifies the three implemented read contracts.
+section 11 specifies the four implemented read contracts.
 Framework behavior is identified separately where relevant. Endpoint plans settle exact inputs,
 response fields, and implementation details before the corresponding endpoints are built. The
 examples do not imply that these business endpoints already exist.
@@ -78,7 +78,7 @@ Implemented resources and planned resource families:
 | Summary counts | `GET /api/v1/served-unserved/rollups/` | Read stored rollups for one release and geographic level |
 | Area locations | `GET /api/v1/served-unserved/locations/` | Read bounded, paginated statuses behind one area |
 
-Area metadata and location routes remain proposals. The three implemented read contracts are
+Area metadata remains proposed. The four implemented read contracts are
 specified in section 11. Operational HTTP routes remain outside these resources.
 
 Use JSON and `snake_case` for ordinary representations. Explicit serializer field lists prevent
@@ -235,7 +235,7 @@ That value is unique within the release and the model already has a `(release, l
 uniqueness constraint. Do not use the status row's surrogate primary key as the public traversal
 order, since replacing a release recreates its rows.
 
-Proposed initial location page size: 100, configurable up to 1,000. Reject invalid sizes and
+Location page size: 100, configurable up to 1,000. Reject invalid sizes and
 requests over the cap with 400; this stricter behavior must be implemented explicitly rather than
 assuming DRF's defaults do it. Return `next`, `previous`, `results`, and metadata identifying the
 release and area. Do not execute a full filtered `COUNT(*)` for every location page. Total counts
@@ -244,12 +244,16 @@ are separate summary concerns.
 Bind each cursor to the resolved release, its current database generation, the area, filters, and
 page size. Treat the cursor as opaque and signed. Reject altered tokens or changed query context
 with 400. If the release generation changed or disappeared, return 409 with code `dataset_changed`
-and a restart instruction. The current release row's identity can serve internally as a generation
-token because replacement deletes and recreates it; it is not a new public resource identity. This
-binding is additional project behavior, beyond DRF's stock cursor token.
+and a restart instruction. Cursors bind both the release row's identity and its `data_generation`
+counter. Every load (including additions and replacements), surviving-release state deletion, and
+rollup rebuild advances this counter inside its write transaction under the writer guard. A
+rollback preserves the generation; deleting and recreating the release changes its row identity.
+The generation is release-wide: even an unrelated state's write requires restarting a county
+traversal. Neither internal value is a public resource identity. This binding is additional project
+behavior, beyond DRF's stock cursor token; see [ADR 0019](decisions/0019-location-cursors.md).
 
 Use a consistent database snapshot for release resolution and page selection within one request. A
-short read-only repeatable-read transaction is a candidate to verify in #26; ordinary `atomic()` at
+short read-only repeatable-read transaction is used; ordinary `atomic()` at
 PostgreSQL's default read-committed isolation does not guarantee that snapshot. Do not hold a
 transaction across HTTP page requests. Across requests, restart detection is the guarantee, not a
 persistent snapshot of deleted data.
@@ -363,8 +367,8 @@ and administrator operations accurately.
 `GET /api/schema/` serves OpenAPI JSON anonymously, with HEAD/OPTIONS support and no unsafe
 methods. The provider supports its standard schema query options and OpenAPI JSON media types
 (`application/vnd.oai.openapi+json` and `application/json`). Schema delivery excludes itself from
-generation. Health is also outside this business schema. Its `paths` contains the three implemented
-read resources from #3.
+generation. Health is also outside this business schema. Its `paths` contains the four implemented
+read resources from #3 and #26.
 Test-only endpoints exercise shared contracts without appearing in the production document.
 
 Run these commands from the repository root in PowerShell:
@@ -427,7 +431,7 @@ Each endpoint plan includes concrete fixtures and independently stated expected 
 | Status filters | All three flags; both status choices; wired default; unfiltered results; empty filtered area |
 | Validation | Malformed and nonexistent keys distinguished; unknown/repeated query inputs; invalid page sizes and tokens |
 | Pagination | First/last/empty pages; every expected ID exactly once; stable ordering; changed context rejected; newer period does not switch an active traversal |
-| Replacement/deletion | Separate database connections verify behavior during commit; old cursors restart with 409; failed replacement preserves old traversal |
+| Release writes | Separate database connections verify commit visibility; replacement, state addition/deletion and rebuild invalidate old cursors with 409; a failed write preserves data and generation |
 | Permissions | Anonymous reads; rejected public writes; denied non-staff operations; required operation permissions; real session/CSRF checks for future unsafe endpoints |
 | Performance | Query-count regression checks at more than one page size; no N+1 growth; full-data query plans and measured payload limits |
 | Consumers | React and Streamlit handle documented successes, empty data, validation failures, and restart-required responses |
@@ -466,7 +470,7 @@ When adding an endpoint, consume the foundation in this order:
 
 ## 11. Implemented public read contracts
 
-All three endpoints permit anonymous GET/HEAD/OPTIONS, reject writes with 405,
+All four endpoints permit anonymous GET/HEAD/OPTIONS, reject writes with 405,
 validate singleton inputs strictly, and set `Cache-Control: no-store` on successful
 reads. Each response is evaluated and serialized in a short read-only repeatable-read
 transaction; release identity, state coverage, totals, and page rows see the same
@@ -558,7 +562,53 @@ A new latest release cannot switch a traversal to a different date pair. Replace
 deletion, or rebuilding between page requests can change results; page-number
 summaries provide no cross-request snapshot or generation check. Restart a summary
 traversal when a coherent multi-page export is needed after such a change. The
-stronger cursor contract for location drill-down remains issue #26.
+stronger cursor contract for location drill-down is described below.
+
+### Location drill-down
+
+`GET /api/v1/served-unserved/locations/` requires `level` and `code`, using the
+same seven levels and area keys as summaries. Optional `state`, `as_of`,
+`processed_on` and `flag` have the summary meanings and validation rules.
+`status=served|not_served` restricts the selected flag; omitting it lists both.
+`page_size` defaults to 100, range 1–1000. `cursor` is an opaque signed token
+(maximum 2,048 characters). Page numbers and unknown or repeated inputs are 400.
+
+The response includes `next`, `previous`, `results`, `release`, `selection`,
+`threshold`, `boundary_vintage` and `area_coverage`. Results are ordered by
+ascending numeric FCC `location_id`, represented as a string, and contain
+`block_geoid`, `h3_res8`, `any_100_20`, `wired_100_20` and `terrestrial_100_20`.
+The first three fields are strings and the flags are Boolean. There is no
+`count`: use the summary API for counts. There are no point geometries.
+
+`selection` discloses `level`, `code`, nullable `state`, `flag`, and nullable
+`status`. `release`, `threshold` and `boundary_vintage` match the summary
+representations. `area_coverage` describes membership before status filtering:
+
+| Value | Meaning |
+|---|---|
+| `observed` | The area has locations in the selected release/state, even if none match the status filter |
+| `no_observations` | A known area has no locations in the selected release/state |
+| `outside_release_coverage` | The census area's state, or explicit H3 state filter, is absent from the release |
+
+A known empty area or empty status filter succeeds with empty `results` and null
+links. Missing rollups do not prevent location reads. A malformed key or date is
+400; an unknown key, unknown explicit release, or empty release catalog is 404.
+H3 cells are known if observed in any loaded release, as for summaries.
+
+Follow the returned links unchanged. They pin dates, selection and page size.
+If a cursor request omits both dates, its signed dates still apply. Altered
+tokens or changed selection, size or explicit dates return 400. A different or
+missing release identity/generation returns 409 `dataset_changed`, even when a
+state unrelated to the selected area changed. Restart with the desired selection
+and no cursor. A rolled-back write does not invalidate a traversal. One request
+sees a consistent database snapshot, with no transaction spanning pages.
+
+Run the optional source reconciliation and first/deep-page profiling in an
+isolated test database:
+
+```powershell
+docker compose run --rm backend pytest -m full_data -s served_unserved/tests/test_locations_full_data.py
+```
 
 ### County GeoJSON
 

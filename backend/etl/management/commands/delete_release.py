@@ -7,6 +7,7 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from bdc.generations import advance_generation
 from bdc.models import Release
 from bdc.release_options import add_release_options, find_release
 from core.maintenance import vacuum_analyze
@@ -152,6 +153,7 @@ class Command(BaseCommand):
                     rollups = deleted.get(Rollup._meta.label, 0)
                 else:
                     statuses, rollups = delete_state(current, state_fips)
+                    advance_generation(current)
         except WriteLockHeld as error:
             raise CommandError(str(error)) from error
 
