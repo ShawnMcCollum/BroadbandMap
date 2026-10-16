@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from django.contrib.gis.geos import MultiPolygon, Polygon
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import F, ForeignObjectRel
 from pytest import MonkeyPatch
 
@@ -510,6 +510,63 @@ def test_only_loader_tables_refer_to_loader_tables() -> None:
                 assert referrer in owned, (
                     f"{referrer.__name__}.{relation.field.name} refers to {model.__name__}"
                 )
+
+
+# The B-tree indexes of each table data loads write, each read by a query that ADR 0021 names.
+# An index that a field adds by default, such as a new foreign key's, fails this test until a
+# decision says which query reads it.
+LOADER_INDEXES = {
+    "bdc_release": {"bdc_release_pkey", "bdc_release_unique_version"},
+    "geography_state": {
+        "geography_state_pkey",
+        "geography_state_geoid_7116cb60_like",
+        "geography_state_unique_abbreviation",
+    },
+    "geography_county": {"geography_county_pkey", "geography_county_geoid_bfda5a9e_like"},
+    "geography_tract": {"geography_tract_pkey", "geography_tract_geoid_43c47ff5_like"},
+    "geography_blockgroup": {
+        "geography_blockgroup_pkey",
+        "geography_blockgroup_geoid_79f527d7_like",
+    },
+    "geography_block": {
+        "geography_block_pkey",
+        "geography_block_geoid_97074710_like",
+        "block_place",
+        "block_county_subdivision",
+    },
+    "geography_place": {"geography_place_pkey", "geography_place_geoid_c4067e4d_like"},
+    "geography_countysubdivision": {
+        "geography_countysubdivision_pkey",
+        "geography_countysubdivision_geoid_6482151a_like",
+    },
+    "served_unserved_servedstatus": {
+        "served_unserved_servedstatus_pkey",
+        "served_unserved_unique_location_per_release",
+        "servedstatus_release_block",
+        "servedstatus_release_h3",
+    },
+    "served_unserved_rollup": {
+        "served_unserved_rollup_pkey",
+        "served_unserved_rollup_unique_area_per_state",
+        "rollup_release_state_level",
+    },
+}
+
+BTREE_INDEXES = """
+SELECT indexname FROM pg_indexes
+WHERE schemaname = 'public' AND tablename = %s AND indexdef LIKE '%% USING btree %%'
+"""
+
+
+def test_loader_tables_have_only_the_indexes_queries_use() -> None:
+    found: dict[str, set[str]] = {}
+    with connection.cursor() as cursor:
+        for model in LOADER_MODELS:
+            table = model._meta.db_table
+            cursor.execute(BTREE_INDEXES, [table])
+            found[table] = {name for (name,) in cursor.fetchall()}
+
+    assert found == LOADER_INDEXES
 
 
 def test_rejected_tiger_file_rolls_back(tmp_path: Path) -> None:
