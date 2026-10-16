@@ -1,7 +1,7 @@
 # REST API guidelines
 
 These guidelines define the API conventions adopted by
-[ADR 0015](decisions/0015-rest-api-contract-and-tests.md).
+[ADR 0016](decisions/0016-rest-api-contract-and-tests.md).
 They apply as business endpoints are implemented in #3 and #26; operational API work is tracked in
 #15/#45,
 and multi-state release identity in #54.
