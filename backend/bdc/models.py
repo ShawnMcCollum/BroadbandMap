@@ -12,6 +12,10 @@ class Release(models.Model):
     )
     as_of = models.DateField(help_text="Date the availability data describes, e.g. 2025-12-31.")
     processed_on = models.DateField(help_text="Date the FCC processed this version of the release.")
+    data_generation = models.PositiveBigIntegerField(
+        default=1,
+        help_text="Internal cursor generation, advanced by every committed release writer.",
+    )
 
     class Meta:
         ordering = ["-as_of", "-processed_on"]

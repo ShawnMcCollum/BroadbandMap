@@ -9,6 +9,29 @@ Newest entries first.
 
 ---
 
+## 2026-10-16 — Paging through the locations behind a summary
+
+- Issue #26 reuses the summary API's geography rules and release metadata for
+  location drill-down at all seven levels. Coverage is reported before the
+  optional status filter, so an empty filter is distinguishable from an area
+  with no observations or a state outside the release.
+- A release ID stopped being a valid generation token when loading became
+  state-scoped: replacement, state addition and deletion can keep that ID.
+  The selected release-wide counter is advanced by each writer in its existing
+  transaction. Real-writer tests verify committed changes, rollbacks, and an
+  API request reading while a second connection commits a write.
+- Keyset pagination alone did not fix bad query plans. PostgreSQL sometimes
+  assumed it would quickly find the requested area in location-ID order and
+  scanned millions of unrelated locations. Explicitly sorting the numeric
+  identity expression `location_id + 0` lets existing geography indexes filter
+  first. Measured first-page SQL for the largest county, place and subdivision
+  fell from about 1.5–2.3 seconds to 86–98 milliseconds. The tradeoff is scanning
+  the area's candidates for the sort, including on deep pages; the reasoning,
+  plans and limitations are recorded in
+  [ADR 0019](decisions/0019-location-cursors.md).
+
+---
+
 ## 2026-10-16 — Exposing stored rollups and county geometry
 
 - Issue #3 builds on the shared API foundation and the multi-state release

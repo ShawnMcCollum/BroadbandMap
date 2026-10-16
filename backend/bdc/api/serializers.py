@@ -7,6 +7,7 @@ from typing import Any
 from rest_framework import serializers
 
 from core.api.pagination import PageEnvelope, PageQuery
+from core.api.validation import StrictQuerySerializer
 
 
 class ISODateField(serializers.DateField):
@@ -18,7 +19,7 @@ class ISODateField(serializers.DateField):
         return super().to_internal_value(value)
 
 
-class ReleaseQuery(PageQuery):
+class ReleaseSelection(StrictQuerySerializer):
     as_of = ISODateField(
         required=False,
         input_formats=["%Y-%m-%d"],
@@ -35,6 +36,10 @@ class ReleaseQuery(PageQuery):
         if ("as_of" in attrs) != ("processed_on" in attrs):
             raise serializers.ValidationError("Supply as_of and processed_on together.")
         return attrs
+
+
+class ReleaseQuery(ReleaseSelection, PageQuery):
+    pass
 
 
 class StateSummary(serializers.Serializer[Any]):

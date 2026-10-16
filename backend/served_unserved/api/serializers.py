@@ -5,12 +5,12 @@ from typing import Any
 
 from rest_framework import serializers
 
-from bdc.api.serializers import ReleaseQuery, ReleaseSummary
-from core.api.pagination import IntegerQueryField, PageEnvelope
+from bdc.api.serializers import ReleaseSelection, ReleaseSummary
+from core.api.pagination import IntegerQueryField, PageEnvelope, PageQuery
 from served_unserved.models import AREA_KEYS, RollupLevel
 
 
-class RollupQuery(ReleaseQuery):
+class AreaSelection(ReleaseSelection):
     level = serializers.ChoiceField(choices=RollupLevel.choices)
     code = serializers.CharField(
         required=False,
@@ -29,7 +29,6 @@ class RollupQuery(ReleaseQuery):
         "cell containment.",
     )
     flag = serializers.ChoiceField(choices=["any", "wired", "terrestrial"], default="wired")
-    page_size = IntegerQueryField(min_value=1, max_value=1000, default=100)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         attrs = super().validate(attrs)
@@ -45,6 +44,10 @@ class RollupQuery(ReleaseQuery):
             ):
                 raise serializers.ValidationError({"state": "State must match the census code."})
         return attrs
+
+
+class RollupQuery(AreaSelection, PageQuery):
+    page_size = IntegerQueryField(min_value=1, max_value=1000, default=100)
 
 
 class SummarySelection(serializers.Serializer[Any]):
@@ -85,4 +88,39 @@ class RollupPage(PageEnvelope):
         help_text="Collections enumerate stored rows only. Use code to distinguish "
         "no observations, outside-release states, or unavailable rollups (503). "
         "Missing rows are never implied zeros.",
+    )
+
+
+class LocationQuery(AreaSelection):
+    page_size = IntegerQueryField(min_value=1, max_value=1000, default=100)
+    code = serializers.CharField(required=True, max_length=15, trim_whitespace=False)
+    status = serializers.ChoiceField(choices=["served", "not_served"], required=False)
+    cursor = serializers.CharField(required=False, max_length=2048, trim_whitespace=False)
+
+
+class LocationSelection(SummarySelection):
+    status = serializers.ChoiceField(choices=["served", "not_served"], allow_null=True)
+
+
+class LocationResult(serializers.Serializer[Any]):
+    location_id = serializers.CharField()
+    block_geoid = serializers.CharField()
+    h3_res8 = serializers.CharField()
+    any_100_20 = serializers.BooleanField()
+    wired_100_20 = serializers.BooleanField()
+    terrestrial_100_20 = serializers.BooleanField()
+
+
+class LocationPage(serializers.Serializer[Any]):
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = LocationResult(many=True)
+    release = ReleaseSummary()
+    selection = LocationSelection()
+    threshold = SpeedThreshold()
+    boundary_vintage = serializers.IntegerField(allow_null=True)
+    area_coverage = serializers.ChoiceField(
+        choices=["observed", "no_observations", "outside_release_coverage"],
+        help_text="Area coverage before the optional status filter. An empty filtered page "
+        "does not imply that the area has no observations.",
     )

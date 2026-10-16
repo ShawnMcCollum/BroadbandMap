@@ -8,6 +8,7 @@ from pathlib import Path
 
 from django.db import IntegrityError, connection, models, transaction
 
+from bdc.generations import advance_generation
 from bdc.models import Release
 from core.write_lock import take_write_lock
 from etl.assign import assign_blocks
@@ -288,6 +289,7 @@ def load_served_unserved(
             raise ReconciliationError(
                 "database does not match the source files: " + "; ".join(problems)
             )
+        advance_generation(release)
 
     return LoadResult(
         release.as_of,
