@@ -33,6 +33,18 @@ def test_boundary_counts_keep_only_the_state() -> None:
     }
 
 
+def test_boundary_counts_of_the_second_state() -> None:
+    assert boundary_counts(FIXTURES / "tiger2020", "54") == {
+        "state": 1,
+        "county": 1,
+        "tract": 1,
+        "block_group": 2,
+        "block": 77,
+        "place": 1,
+        "county_subdivision": 1,
+    }
+
+
 def test_fcc_summary_counts_the_fixture_csv(tmp_path: Path) -> None:
     summary = fcc_summary(make_data_dir(tmp_path) / f"{FCC_STEM}.zip")
 

@@ -16,10 +16,10 @@ from served_unserved.models import Rollup, ServedStatus
 
 class Command(BaseCommand):
     help = (
-        "Delete the release that --as-of and --processed-on name, with its statuses and rollups, "
-        "in one transaction. Other releases are not changed. Once the deletion has committed, "
-        "the statuses, rollups and releases are vacuumed and analyzed. Stops at once if another "
-        "data load, deletion or rollup rebuild is running."
+        "Delete the release that --as-of and --processed-on name, with the statuses and rollups "
+        "of every state in it, in one transaction. Other releases are not changed. Once the "
+        "deletion has committed, the statuses, rollups and releases are vacuumed and analyzed. "
+        "Stops at once if another data load, deletion or rollup rebuild is running."
     )
 
     def add_arguments(self, parser: ArgumentParser) -> None:

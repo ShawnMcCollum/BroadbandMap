@@ -59,10 +59,37 @@ J25_ROLLUPS = [
     ("tract", "39055312000", 30, 30, 10, 20),
 ]
 
+# West Virginia's file of the release FCC_STEM names. Its locations are made up, in real blocks of
+# the West Virginia fixtures; the last one shares cell 882ab14f33fffff with 13 Ohio fixture
+# locations, as a location across a state line would.
+WV_STEM = "bdc_54_fixed_broadband_served_unserved_D25_29sep2026"
+
+# The West Virginia CSV's rollups, sorted as FIXTURE_ROLLUPS. Blocks 540090311031011 and
+# 540090311032016 are in Weirton city; 540090311032004 is not.
+WV_ROLLUPS = [
+    ("block", "540090311031011", 3, 3, 2, 3),
+    ("block", "540090311032004", 1, 1, 0, 1),
+    ("block", "540090311032016", 2, 1, 0, 0),
+    ("block_group", "540090311031", 3, 3, 2, 3),
+    ("block_group", "540090311032", 3, 2, 0, 1),
+    ("county", "54009", 6, 5, 2, 4),
+    ("county_subdivision", "5400993552", 6, 5, 2, 4),
+    ("h3_res8", "882a8a6c13fffff", 3, 3, 2, 3),
+    ("h3_res8", "882a8a6c17fffff", 2, 1, 0, 0),
+    ("h3_res8", "882ab14f33fffff", 1, 1, 0, 1),
+    ("place", "5485156", 5, 4, 2, 3),
+    ("tract", "54009031103", 6, 5, 2, 4),
+]
+
 
 def fixture_csv() -> str:
     """The fixture CSV's text."""
     return (FIXTURES / "served_unserved.csv").read_text(encoding="utf-8")
+
+
+def wv_csv() -> str:
+    """West Virginia's CSV, of the same release as the Ohio fixture."""
+    return (FIXTURES / "served_unserved_54.csv").read_text(encoding="utf-8")
 
 
 def j25_csv() -> str:

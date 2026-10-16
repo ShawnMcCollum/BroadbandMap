@@ -18,7 +18,7 @@ from core.tests.helpers import (
     table_stats,
 )
 from core.write_lock import take_write_lock, write_lock_holder
-from geography.models import Block
+from geography.models import Block, State
 from served_unserved.models import Rollup, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, build_rollups
 
@@ -64,6 +64,50 @@ def test_build_rollups_rebuilds_every_release(served_status: ServedStatus) -> No
         ("place", "3918000", 1, 1, 1, 1),
         ("tract", "39049000110", 1, 1, 1, 1),
     ]
+
+
+def test_build_rollups_rebuilds_every_state(served_status: ServedStatus, wv_block: Block) -> None:
+    ServedStatus.objects.create(
+        release=served_status.release,
+        location_id=2001,
+        block=wv_block,
+        h3_res8="882a91ae3bfffff",
+        any_100_20=True,
+        wired_100_20=False,
+        terrestrial_100_20=False,
+    )
+    out = StringIO()
+
+    call_command("build_rollups", stdout=out)
+
+    assert out.getvalue() == "Built 14 rollups for December 2025 (processed 2026-09-29).\n"
+    assert Rollup.objects.filter(state_id="39").count() == 7
+    assert Rollup.objects.filter(state_id="54").count() == 7
+    cell = Rollup.objects.filter(level="h3_res8", code="882a91ae3bfffff")
+    assert list(cell.order_by("state").values_list("state_id", *COUNT_FIELDS)) == [
+        ("39", 1, 1, 1, 1),
+        ("54", 1, 1, 0, 0),
+    ]
+
+
+def test_build_rollups_drops_rows_of_a_state_without_statuses(
+    served_status: ServedStatus, wv_state: State
+) -> None:
+    Rollup.objects.create(
+        release=served_status.release,
+        state=wv_state,
+        level="county",
+        code="54009",
+        locations=1,
+        any_100_20=1,
+        wired_100_20=0,
+        terrestrial_100_20=0,
+    )
+
+    call_command("build_rollups", stdout=StringIO())
+
+    assert not Rollup.objects.filter(state_id="54").exists()
+    assert Rollup.objects.count() == 7
 
 
 def test_build_rollups_rebuilds_one_release(served_status: ServedStatus, june: Release) -> None:
@@ -248,10 +292,10 @@ def test_build_rollups_needs_assigned_blocks(served_status: ServedStatus) -> Non
 def test_failed_rebuild_keeps_the_previous_rollups(
     served_status: ServedStatus, rollup: Rollup, monkeypatch: MonkeyPatch
 ) -> None:
-    def fail_at_blocks(release: Release, level: str) -> int:
+    def fail_at_blocks(release: Release, state_fips: str, level: str) -> int:
         if level == "block":
             raise RuntimeError("block build failed")
-        return build_rollups(release, level)
+        return build_rollups(release, state_fips, level)
 
     monkeypatch.setattr(
         "served_unserved.management.commands.build_rollups.build_rollups", fail_at_blocks

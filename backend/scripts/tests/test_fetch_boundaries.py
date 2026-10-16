@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from scripts.fetch_boundaries import FetchError, fetch, main
+from scripts.fetch_boundaries import BASE_URL, FetchError, fetch, main
 
 URL = "https://example.test/TRACT/tl_2020_39_tract.zip"
 
@@ -83,3 +83,29 @@ def test_main_downloads_zcta_only_when_asked(tmp_path: Path) -> None:
         fetch_mock.reset_mock()
         assert main(["--dest", str(tmp_path), "--include-zcta"]) == 0
         assert any("zcta" in call.args[0] for call in fetch_mock.call_args_list)
+
+
+def test_main_downloads_another_state_s_files(tmp_path: Path) -> None:
+    with patch("scripts.fetch_boundaries.fetch", return_value=True) as fetch_mock:
+        assert main(["--dest", str(tmp_path), "--state", "54"]) == 0
+
+    assert [call.args[0] for call in fetch_mock.call_args_list] == [
+        f"{BASE_URL}/{name}"
+        for name in (
+            "STATE/tl_2020_us_state.zip",
+            "COUNTY/tl_2020_us_county.zip",
+            "TRACT/tl_2020_54_tract.zip",
+            "BG/tl_2020_54_bg.zip",
+            "TABBLOCK20/tl_2020_54_tabblock20.zip",
+            "PLACE/tl_2020_54_place.zip",
+            "COUSUB/tl_2020_54_cousub.zip",
+        )
+    ]
+
+
+@pytest.mark.parametrize("value", ["5", "054", "OH"])
+def test_state_must_be_a_two_digit_fips_code(tmp_path: Path, value: str) -> None:
+    with pytest.raises(SystemExit) as exited:
+        main(["--dest", str(tmp_path), "--state", value])
+
+    assert exited.value.code == 2

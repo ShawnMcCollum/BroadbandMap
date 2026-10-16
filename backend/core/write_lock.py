@@ -65,9 +65,9 @@ def refusal(holder: Holder | None) -> str:
 def take_write_lock(operation: str) -> None:
     """Take the write lock until the current transaction ends, or raise WriteLockHeld at once.
 
-    ``operation`` says what this writer does, in at most 63 characters, e.g. "load of June 2025
-    (processed 2026-10-01)". It is this connection's application_name until the transaction
-    ends, so that a writer refused the lock can name it.
+    ``operation`` says what this writer does, in at most 63 characters, e.g. "load of state 39 into
+    June 2025 (processed 2026-10-01)". It is this connection's application_name until the
+    transaction ends, so that a writer refused the lock can name it.
 
     Raises RuntimeError outside a transaction, where the lock would be released at once.
     """

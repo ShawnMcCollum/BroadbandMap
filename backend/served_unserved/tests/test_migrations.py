@@ -9,15 +9,18 @@ from django.db.migrations.executor import MigrationExecutor
 from django.db.migrations.state import StateApps
 
 from bdc.models import Release
-from geography.models import Block
+from geography.models import Block, State
 from geography.tests.helpers import boundary_fields
-from served_unserved.models import ServedStatus
+from served_unserved.models import Rollup, ServedStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 # The last migrations with bdc.Location, and the ones that remove it
 BEFORE = [("bdc", "0001_initial"), ("served_unserved", "0004_rollup_place_levels")]
 AFTER = [("bdc", "0002_delete_location"), ("served_unserved", "0005_placement_per_release")]
+# The migration that gives each rollup its state (ADR 0017)
+BEFORE_STATE = [("served_unserved", "0005_placement_per_release")]
+AFTER_STATE = [("served_unserved", "0006_rollup_state")]
 
 
 def migrate(targets: list[tuple[str, str]]) -> StateApps:
@@ -120,3 +123,76 @@ def test_undoing_restores_each_location_as_placed_in_its_latest_release(
         (2, "390490001101001", "882a91ae35fffff"),
     ]
     assert status.objects.count() == 3
+
+
+@pytest.mark.usefixtures("at_latest")
+def test_fills_each_rollup_s_state(block: Block, wv_block: Block, release: Release) -> None:
+    old = migrate(BEFORE_STATE)
+    status = old.get_model("served_unserved", "ServedStatus")
+    rollup = old.get_model("served_unserved", "Rollup")
+    status.objects.create(
+        release_id=release.pk,
+        location_id=1,
+        block_id=block.pk,
+        h3_res8="882a91ae3bfffff",
+        any_100_20=True,
+        wired_100_20=True,
+        terrestrial_100_20=True,
+    )
+    status.objects.create(
+        release_id=release.pk,
+        location_id=2,
+        block_id=wv_block.pk,
+        h3_res8="882a8a6c13fffff",
+        any_100_20=True,
+        wired_100_20=False,
+        terrestrial_100_20=False,
+    )
+    for level, code in (
+        ("county", "39049"),
+        ("county", "54009"),
+        ("h3_res8", "882a91ae3bfffff"),
+        ("h3_res8", "882a8a6c13fffff"),
+    ):
+        rollup.objects.create(
+            release_id=release.pk,
+            level=level,
+            code=code,
+            locations=1,
+            any_100_20=1,
+            wired_100_20=0,
+            terrestrial_100_20=0,
+        )
+
+    migrate(AFTER_STATE)
+
+    assert sorted(Rollup.objects.values_list("level", "code", "state_id")) == [
+        ("county", "39049", "39"),
+        ("county", "54009", "54"),
+        ("h3_res8", "882a8a6c13fffff", "54"),
+        ("h3_res8", "882a91ae3bfffff", "39"),
+    ]
+
+
+@pytest.mark.usefixtures("at_latest")
+def test_undoing_drops_the_state(state: State, release: Release) -> None:
+    Rollup.objects.create(
+        release=release,
+        state=state,
+        level="county",
+        code="39049",
+        locations=10,
+        any_100_20=8,
+        wired_100_20=4,
+        terrestrial_100_20=6,
+    )
+
+    old = migrate(BEFORE_STATE)
+
+    rollups = old.get_model("served_unserved", "Rollup").objects.values_list(
+        "level", "code", "locations"
+    )
+    assert list(rollups) == [("county", "39049", 10)]
+    with connection.cursor() as cursor:
+        columns = connection.introspection.get_table_description(cursor, "served_unserved_rollup")
+    assert "state_id" not in [column.name for column in columns]

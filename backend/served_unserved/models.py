@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from django.db import models
 from django.db.models.expressions import Combinable
 from django.db.models.functions import Left
+from django.db.models.lookups import Exact
 
 
 class ServedStatus(models.Model):
@@ -183,10 +184,11 @@ def code_fits_level() -> models.CheckConstraint:
 
 
 class Rollup(models.Model):
-    """Served/Not served counts for one area in one release.
+    """Served/Not served counts of one state's locations in one area, in one release.
 
     Built from the release's statuses by every data load. Only areas with at least one
-    location have a row.
+    location have a row. An H3 cell on a state line has one row per state, and its counts are
+    the sum of its rows (ADR 0017).
     """
 
     release = models.ForeignKey(
@@ -194,6 +196,16 @@ class Rollup(models.Model):
         on_delete=models.CASCADE,
         related_name="rollups",
         db_index=False,
+    )
+    state = models.ForeignKey(
+        "geography.State",
+        on_delete=models.PROTECT,
+        related_name="rollups",
+        db_index=False,
+        help_text=(
+            "State whose statuses the row counts. A census area's code starts with the state's "
+            "FIPS code; an H3 cell on a state line has one row per state."
+        ),
     )
     level = models.CharField(
         max_length=20,
@@ -223,13 +235,20 @@ class Rollup(models.Model):
     class Meta:
         verbose_name = "rollup"
         verbose_name_plural = "rollups"
-        ordering = ["release", "level", "code"]
+        ordering = ["release", "level", "code", "state"]
         constraints = [
             models.UniqueConstraint(
-                fields=["release", "level", "code"],
-                name="served_unserved_rollup_unique_area_per_release",
+                fields=["release", "level", "code", "state"],
+                name="served_unserved_rollup_unique_area_per_state",
             ),
             code_fits_level(),
+            # A census area lies in one state, whose FIPS code starts its code. An H3 cell can
+            # cross a state line, so its rows name the state they count (ADR 0017).
+            models.CheckConstraint(
+                condition=models.Q(level=RollupLevel.H3_RES8)
+                | models.Q(Exact(Left("code", 2), models.F("state"))),
+                name="served_unserved_rollup_code_in_state",
+            ),
             models.CheckConstraint(
                 condition=models.Q(locations__gte=1),
                 name="served_unserved_rollup_has_locations",
@@ -246,6 +265,12 @@ class Rollup(models.Model):
                 condition=models.Q(wired_100_20__lte=models.F("terrestrial_100_20")),
                 name="served_unserved_rollup_wired_within_terrestrial",
             ),
+        ]
+        # A data load deletes, builds and reconciles its own state's rows, level by level. The
+        # unique index leads with level and code, for reads by area, so it cannot narrow those to
+        # one state, and they would read every state's rows in the release (ADR 0017).
+        indexes = [
+            models.Index(fields=["release", "state", "level"], name="rollup_release_state_level"),
         ]
 
     def __str__(self) -> str:

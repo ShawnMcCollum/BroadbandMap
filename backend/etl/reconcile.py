@@ -33,19 +33,20 @@ class Counts:
         }
 
 
-def database_counts(release: Release, boundaries_of: str | None = None) -> Counts:
-    """Count what the database holds of ``release``.
+def database_counts(release: Release, state_fips: str, *, boundaries: bool = False) -> Counts:
+    """Count what the database holds of one state's part of ``release``.
 
-    The boundary rows of the state ``boundaries_of`` are counted too, for a load that wrote
-    them. Every boundary GEOID starts with its state's FIPS code.
+    The statuses are those in the state's blocks, and the rollups those of the state. With
+    ``boundaries``, the state's boundary rows are counted too, for a load that wrote them. Every
+    boundary GEOID starts with its state's FIPS code.
     """
     counts = Counts()
-    if boundaries_of is not None:
+    if boundaries:
         for level in LEVELS:
-            boundaries = level.model._default_manager.filter(pk__startswith=boundaries_of)
-            counts.rows[level.label] = boundaries.count()
+            rows = level.model._default_manager.filter(pk__startswith=state_fips)
+            counts.rows[level.label] = rows.count()
 
-    statuses = ServedStatus.objects.filter(release=release)
+    statuses = ServedStatus.objects.filter(release=release, block__geoid__startswith=state_fips)
     counts.rows["served_status"] = statuses.count()
     flag_rows = (
         statuses.order_by()
@@ -65,7 +66,7 @@ def database_counts(release: Release, boundaries_of: str | None = None) -> Count
         counts.locations_per_county[county] = n
 
     rollups = (
-        Rollup.objects.filter(release=release, level=RollupLevel.COUNTY)
+        Rollup.objects.filter(release=release, state_id=state_fips, level=RollupLevel.COUNTY)
         .order_by()
         .values_list("code", *COUNT_FIELDS)
     )
@@ -74,7 +75,7 @@ def database_counts(release: Release, boundaries_of: str | None = None) -> Count
             counts.county_rollups[f"{code}:{name}"] = value
 
     totals = (
-        Rollup.objects.filter(release=release)
+        Rollup.objects.filter(release=release, state_id=state_fips)
         .order_by()
         .values_list("level")
         .annotate(*(Sum(name) for name in COUNT_FIELDS))
@@ -104,7 +105,7 @@ def expected_rollup_totals(county_rollups: Counter[str]) -> Counter[str]:
 
     Every location lies in exactly one area at each level, or, at the place level, in at most
     one; database_counts adds the statuses outside every place. So every level adds up to the
-    state's totals, which are the sums of the county counts.
+    loaded state's totals, which are the sums of the county counts.
     """
     state: Counter[str] = Counter()
     for key, value in county_rollups.items():

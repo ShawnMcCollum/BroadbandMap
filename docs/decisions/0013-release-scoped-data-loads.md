@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Amended by:** [0014](0014-vacuum-after-each-data-load.md), which vacuums and analyzes the loaded tables after each data load, and [0015](0015-one-writer-at-a-time.md), which lets one data load, deletion or rollup rebuild run at a time
+- **Amended by:** [0014](0014-vacuum-after-each-data-load.md), which vacuums and analyzes the loaded tables after each data load, [0015](0015-one-writer-at-a-time.md), which lets one data load, deletion or rollup rebuild run at a time, and [0017](0017-national-releases-loaded-by-state.md), which makes a release national and lets each data load add one state to it
 
 ## Context
 
@@ -65,6 +65,9 @@ period order.
    question this decision does not answer: whether a release is national and
    loaded state by state, or one state's file. The rollups of an H3 cell that
    crosses a state line depend on the answer.
+   - *Amended by [0017](0017-national-releases-loaded-by-state.md):* a release is
+     national, and each data load adds one state to it. A database holds any number
+     of states, and an H3 cell on a state line has one rollup row per state.
 4. **A release is identified by `as_of` and `processed_on`, never by its id.**
    The unique constraint `bdc_release_unique_version` already enforces the
    pair. A load's result names its release by the two dates. The API (#3) and
@@ -80,6 +83,9 @@ period order.
    commits, and a failed replace leaves the old rows in place. A reprocessed
    file is a new release, because its `processed_on` differs, so no other
    versioning is needed.
+   - *Amended by [0017](0017-national-releases-loaded-by-state.md):* replacing
+     deletes only the state's statuses and rollups in the release, and keeps the
+     release and its id.
 6. **Releases can be loaded in any order.** Nothing in a load depends on the
    releases already loaded. Where "latest" matters, it is the latest `as_of`,
    then the latest `processed_on`, the order `Release.Meta.ordering` gives:
@@ -187,6 +193,8 @@ area's statuses does not:
 - **Negative:** The census boundaries cannot be reloaded by a data load. A
   database whose boundaries must change is emptied and loaded again.
 - **Negative:** A second state cannot be loaded yet (decision 3).
+  - *Amended by [0017](0017-national-releases-loaded-by-state.md):* a second state
+    loads beside the first.
 - **Negative:** Two data loads can still run at once. Two loads of different
   releases do not conflict, but two loads that both load a state's boundaries,
   or the same release, fail when the first commits.

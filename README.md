@@ -106,9 +106,9 @@ waits for a data load
 
 Only one data load, release deletion or rollup rebuild runs at a time. One
 started while another is running stops at once, changes nothing, and names the
-one running, for example `another writer is running: load of June 2025
-(processed 2026-10-01), process 4321, since 2026-10-16 03:36:57 UTC; try again
-once it has finished`
+one running, for example `another writer is running: load of state 39 into
+June 2025 (processed 2026-10-01), process 4321, since 2026-10-16 03:36:57 UTC;
+try again once it has finished`
 ([ADR 0015](docs/decisions/0015-one-writer-at-a-time.md)).
 
 Once the load has committed, the command vacuums and analyzes the loaded
@@ -117,20 +117,20 @@ reused by the next one, and queries are planned with statistics that include
 the new release
 ([ADR 0014](docs/decisions/0014-vacuum-after-each-data-load.md)).
 
-Each data load also assigns every census block to the place and county
-subdivision that hold its internal point, then counts the Served/Not served
-locations in every county, census tract, block group, census block, H3 cell,
-place and county subdivision. To rebuild those counts from the loaded data
-without a full reload, run:
+Each data load also assigns every census block of its state to the place and
+county subdivision that hold its internal point, then counts the Served/Not
+served locations in every county, census tract, block group, census block, H3
+cell, place and county subdivision. To rebuild those counts from the loaded
+data without a full reload, run:
 
 ```powershell
 docker compose run --rm backend python manage.py build_rollups
 ```
 
-It rebuilds every loaded release, about half a minute each for Ohio, then
-vacuums and analyzes the rollups. To rebuild one release, name it by the date
-its data describes and the date the FCC processed it, for example
-`--as-of 2025-06-30 --processed-on 2026-10-01`.
+It rebuilds every loaded release, for every state in it, about half a minute
+per release for Ohio, then vacuums and analyzes the rollups. To rebuild one
+release, name it by the date its data describes and the date the FCC processed
+it, for example `--as-of 2025-06-30 --processed-on 2026-10-01`.
 
 A database loaded before places and county subdivisions had rollups has
 census blocks without them, and data loads and `build_rollups` stop with an
@@ -146,8 +146,10 @@ is needed.
 
 #### Add another release
 
-Each data load adds one release beside those already loaded, and never
-changes another. To add the June 2025 release, download it as described in
+Each data load adds one state's file to its release, and never changes
+another release, or another state of the same release
+([ADR 0017](docs/decisions/0017-national-releases-loaded-by-state.md)). To add
+the June 2025 release, download it as described in
 [`data/README.md`](data/README.md#3-a-second-release-optional). Since
 `data/raw/` then holds two FCC files, name the one to load:
 
@@ -156,9 +158,29 @@ docker compose run --rm backend python manage.py load_served_unserved --fcc-file
 ```
 
 It takes about three minutes, since the census boundaries are already
-loaded. Releases can be loaded in any order. Loading a release that is
-already loaded stops with an error; add `--replace` to load it again. Until
-the replacement is committed, readers see the release as it was.
+loaded. Releases can be loaded in any order. Loading a state into a release
+that already holds it stops with an error; add `--replace` to load it again.
+Until the replacement is committed, readers see the release as it was.
+
+#### Add another state
+
+A release is national: the FCC processes every state's file of it together,
+and each data load adds one state. To add West Virginia beside Ohio, download
+its file and its census boundaries as described in
+[`data/README.md`](data/README.md#4-another-state-optional), then name the
+file to load:
+
+```powershell
+docker compose run --rm backend python manage.py load_served_unserved --fcc-file bdc_54_fixed_broadband_served_unserved_D25_13oct2026.zip
+```
+
+The first load of a state also loads its census boundaries. It never changes
+Ohio's rows. An H3 cell that crosses the state line has one row per state,
+and its counts are the sum of the two. The FCC offers only the latest
+processing of each release, so a file downloaded today can belong to a newer
+processing than an Ohio file downloaded earlier, and so to a different
+release. Download every state's file from the same processing to put them in
+one release.
 
 #### Delete a release
 
@@ -171,11 +193,12 @@ docker compose run --rm backend python manage.py delete_release --as-of 2025-06-
 ```
 
 The command asks for confirmation; add `--no-input` to skip the question. It
-deletes the release with its statuses and rollups, in one transaction, and
-changes no other release. If no release has those dates, it lists the dates of
-the releases that are loaded. Readers see the release until the deletion
-commits, and no query waits for it. The command then vacuums and analyzes the
-tables it changed, so the next data load reuses their space. For Ohio, it
+deletes the release with the statuses and rollups of every state in it, in one
+transaction, and changes no other release. If no release has those dates, it
+lists the dates of the releases that are loaded. Readers see the release until
+the deletion commits, and no query waits for it. The command then vacuums and
+analyzes the tables it changed, so the next data load reuses their space. For
+Ohio, it
 takes about ten seconds.
 
 ### API foundation
@@ -253,6 +276,7 @@ Architectural and scope decisions are recorded in
 - [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
 - [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 - [0016 — REST API contract and tests](docs/decisions/0016-rest-api-contract-and-tests.md)
+- [0017 — A release is national, and a data load adds one state](docs/decisions/0017-national-releases-loaded-by-state.md)
 
 The adopted REST API conventions and implementation guidance are in
 [docs/api-guidelines.md](docs/api-guidelines.md).

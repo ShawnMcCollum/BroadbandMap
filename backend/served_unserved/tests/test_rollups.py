@@ -143,8 +143,18 @@ def add_status(
     )
 
 
+def add_wv_status(
+    release: Release,
+    block: Block,
+    location_id: int = 2001,
+    cell: str = CELL_A,
+    flags: str = "100",
+) -> ServedStatus:
+    return add_status(release, location_id, block, cell, flags)
+
+
 def build_all(release: Release) -> int:
-    return sum(build_rollups(release, level) for level in RollupLevel)
+    return sum(build_rollups(release, "39", level) for level in RollupLevel)
 
 
 def rollup_rows(release: Release) -> list[tuple[object, ...]]:
@@ -190,14 +200,55 @@ def test_builds_one_row_per_area_with_locations(release_with_statuses: Release) 
     assert not Rollup.objects.filter(code="39001").exists()
 
 
+def test_builds_only_the_given_state(release_with_statuses: Release, wv_block: Block) -> None:
+    add_wv_status(release_with_statuses, wv_block)
+
+    assert build_all(release_with_statuses) == 21
+
+    assert rollup_rows(release_with_statuses) == EXPECTED
+    assert not Rollup.objects.filter(state_id="54").exists()
+
+
+def test_cell_on_a_state_line_has_a_row_per_state(
+    release_with_statuses: Release, wv_block: Block
+) -> None:
+    add_wv_status(release_with_statuses, wv_block)
+
+    build_all(release_with_statuses)
+    for level in RollupLevel:
+        build_rollups(release_with_statuses, "54", level)
+
+    cell = Rollup.objects.filter(release=release_with_statuses, level="h3_res8", code=CELL_A)
+    assert list(cell.order_by("state").values_list("state_id", *COUNT_FIELDS)) == [
+        ("39", 2, 2, 1, 2),
+        ("54", 1, 1, 0, 0),
+    ]
+    statuses = statuses_in(release_with_statuses, "h3_res8", CELL_A)
+    assert set(statuses.values_list("location_id", flat=True)) == {1001, 1002, 2001}
+
+
+def test_rebuilding_one_state_leaves_the_other(
+    release_with_statuses: Release, wv_block: Block
+) -> None:
+    add_wv_status(release_with_statuses, wv_block)
+    for level in RollupLevel:
+        build_rollups(release_with_statuses, "54", level)
+    before = list(Rollup.objects.filter(state_id="54").order_by("id").values_list())
+
+    build_all(release_with_statuses)
+    build_all(release_with_statuses)
+
+    assert list(Rollup.objects.filter(state_id="54").order_by("id").values_list()) == before
+
+
 def test_builds_one_level_at_a_time(release_with_statuses: Release) -> None:
     tracts = [row for row in EXPECTED if row[0] == "tract"]
     counties = [row for row in EXPECTED if row[0] == "county"]
 
-    assert build_rollups(release_with_statuses, "tract") == 3
+    assert build_rollups(release_with_statuses, "39", "tract") == 3
     assert rollup_rows(release_with_statuses) == tracts
 
-    assert build_rollups(release_with_statuses, "county") == 2
+    assert build_rollups(release_with_statuses, "39", "county") == 2
     assert rollup_rows(release_with_statuses) == counties + tracts
 
 
@@ -282,7 +333,7 @@ def test_release_without_statuses_has_no_rollups(
 
 def test_build_rejects_a_level_without_rollups(release: Release) -> None:
     with pytest.raises(ValueError, match=re.escape("no rollups at level 'state'")):
-        build_rollups(release, "state")
+        build_rollups(release, "39", "state")
 
 
 def test_location_outside_every_place_adds_to_no_place_row(release_with_statuses: Release) -> None:

@@ -3,8 +3,9 @@
 These guidelines define the API conventions adopted by
 [ADR 0016](decisions/0016-rest-api-contract-and-tests.md).
 Issue #62 implements the shared HTTP foundation described here. Business endpoints remain in #3
-and #26; operational API work remains in #15, and multi-state release identity in #54. The writer
-guard from #45 is already implemented and is independent of HTTP access policy.
+and #26; operational API work remains in #15, and multi-state release identity is settled by
+[ADR 0017](decisions/0017-national-releases-loaded-by-state.md). The writer guard from #45 is
+already implemented and is independent of HTTP access policy.
 
 The resource paths and numerical starting limits below are project guidance for endpoint planning.
 Framework behavior is identified separately where relevant. Endpoint plans settle exact inputs,
@@ -90,8 +91,11 @@ use `fields = '__all__'` for a public contract. See
   `as_of`, then `processed_on`. An incomplete pair is invalid.
 - Return the resolved release in every release-backed JSON response and pagination link. A
   subsequent page must not silently select a newly loaded period.
-- Return geographic coverage explicitly. Currently it is one state per database; a date pair must
-  not imply nationwide completeness. #54 decides the future cross-state model.
+- Return geographic coverage explicitly: the states each release holds
+  (`served_unserved.release_states.states_in_release`). A release is national and can hold any
+  subset of states ([ADR 0017](decisions/0017-national-releases-loaded-by-state.md)), so a date pair
+  must not imply nationwide completeness. An H3 cell on a state line has one rollup row per state;
+  add up a cell's rows before returning it.
 - Use `AREA_KEYS` and `RollupLevel` for permitted levels, key validation, and location selection.
   Avoid copying their regexes or lookup logic into views.
 - Represent location IDs, GEOIDs, and H3 cells as strings in JSON. They are identifiers, not

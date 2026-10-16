@@ -6,9 +6,13 @@ Run it from the repository root:
     docker compose run --rm --no-deps backend python scripts/fetch_boundaries.py
 
 Files already downloaded are skipped, so the script is safe to rerun.
+
+Pass --state with a two-digit FIPS code to download another state's files; the default is Ohio
+(39).
 """
 
 import argparse
+import re
 import shutil
 import sys
 import zipfile
@@ -19,15 +23,28 @@ BASE_URL = "https://www2.census.gov/geo/tiger/TIGER2020"
 OHIO_FIPS = "39"
 
 # State and county are published only as nationwide files.
-FILES = (
-    "STATE/tl_2020_us_state.zip",
-    "COUNTY/tl_2020_us_county.zip",
-    f"TRACT/tl_2020_{OHIO_FIPS}_tract.zip",
-    f"BG/tl_2020_{OHIO_FIPS}_bg.zip",
-    f"TABBLOCK20/tl_2020_{OHIO_FIPS}_tabblock20.zip",
-    f"PLACE/tl_2020_{OHIO_FIPS}_place.zip",
-    f"COUSUB/tl_2020_{OHIO_FIPS}_cousub.zip",
-)
+NATIONWIDE_FILES = ("STATE/tl_2020_us_state.zip", "COUNTY/tl_2020_us_county.zip")
+
+
+def boundary_files(state_fips: str) -> list[str]:
+    """The files a state needs: the nationwide state and county files, then its own five."""
+    return [
+        *NATIONWIDE_FILES,
+        f"TRACT/tl_2020_{state_fips}_tract.zip",
+        f"BG/tl_2020_{state_fips}_bg.zip",
+        f"TABBLOCK20/tl_2020_{state_fips}_tabblock20.zip",
+        f"PLACE/tl_2020_{state_fips}_place.zip",
+        f"COUSUB/tl_2020_{state_fips}_cousub.zip",
+    ]
+
+
+def fips_code(value: str) -> str:
+    """A two-digit state FIPS code, for argparse."""
+    if not re.fullmatch(r"[0-9]{2}", value):
+        raise argparse.ArgumentTypeError(f"{value!r} is not a two-digit state FIPS code, e.g. 39")
+    return value
+
+
 # Published only as one nationwide file of about 528 MB, so it is opt-in.
 ZCTA_FILE = "ZCTA520/tl_2020_us_zcta520.zip"
 
@@ -93,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
         help="also download the nationwide ZIP Code Tabulation Area file (about 528 MB)",
     )
     parser.add_argument(
+        "--state",
+        type=fips_code,
+        default=OHIO_FIPS,
+        help="two-digit FIPS code of the state whose files to download (default: 39, Ohio)",
+    )
+    parser.add_argument(
         "--dest",
         type=Path,
         default=DEFAULT_DEST,
@@ -100,7 +123,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    files = [*FILES, ZCTA_FILE] if args.include_zcta else list(FILES)
+    files = (
+        [*boundary_files(args.state), ZCTA_FILE]
+        if args.include_zcta
+        else boundary_files(args.state)
+    )
     args.dest.mkdir(parents=True, exist_ok=True)
 
     failures = 0

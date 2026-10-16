@@ -5,7 +5,7 @@ from django.db import IntegrityError, connection, transaction
 from django.db.models import ProtectedError
 
 from bdc.models import Release
-from geography.models import Block
+from geography.models import Block, State
 from geography.tests.helpers import boundary_fields
 from served_unserved.models import Rollup, ServedStatus
 
@@ -47,6 +47,7 @@ REJECTED_ROLLUPS = [
     ({"terrestrial_100_20": 9}, "served_unserved_rollup_terrestrial_within_any"),
     ({"wired_100_20": 7}, "served_unserved_rollup_wired_within_terrestrial"),
     ({"wired_100_20": -1}, "served_unserved_rollup_wired_100_20_check"),
+    ({"code": "54009"}, "served_unserved_rollup_code_in_state"),
 ]
 # (level, a code of that level's form)
 VALID_CODES = [
@@ -74,8 +75,8 @@ def make_status(
     )
 
 
-def make_rollup(release: Release, **changes: object) -> Rollup:
-    return Rollup.objects.create(release=release, **{**VALID_ROLLUP, **changes})
+def make_rollup(release: Release, state: State, **changes: object) -> Rollup:
+    return Rollup.objects.create(release=release, state=state, **{**VALID_ROLLUP, **changes})
 
 
 @pytest.mark.parametrize("flags", ACCEPTED)
@@ -165,44 +166,60 @@ def test_block_with_a_status_cannot_be_deleted(block: Block, served_status: Serv
         block.delete()
 
 
-def test_valid_rollup_is_accepted(release: Release) -> None:
-    make_rollup(release)
+def test_valid_rollup_is_accepted(release: Release, state: State) -> None:
+    make_rollup(release, state)
 
     assert Rollup.objects.count() == 1
 
 
 @pytest.mark.parametrize(("changes", "constraint"), REJECTED_ROLLUPS)
 def test_invalid_rollups_are_rejected(
-    release: Release, changes: dict[str, object], constraint: str
+    release: Release, state: State, changes: dict[str, object], constraint: str
 ) -> None:
     with pytest.raises(IntegrityError, match=constraint), transaction.atomic():
-        make_rollup(release, **changes)
+        make_rollup(release, state, **changes)
 
 
 @pytest.mark.parametrize(("level", "code"), VALID_CODES)
-def test_each_level_accepts_its_codes(release: Release, level: str, code: str) -> None:
-    make_rollup(release, level=level, code=code)
+def test_each_level_accepts_its_codes(
+    release: Release, state: State, level: str, code: str
+) -> None:
+    make_rollup(release, state, level=level, code=code)
 
     rollup = Rollup.objects.get()
     assert (rollup.level, rollup.code) == (level, code)
 
 
-def test_area_appears_once_per_release(release: Release, rollup: Rollup) -> None:
+def test_area_appears_once_per_state_in_a_release(
+    release: Release, state: State, rollup: Rollup
+) -> None:
     with (
-        pytest.raises(IntegrityError, match="served_unserved_rollup_unique_area_per_release"),
+        pytest.raises(IntegrityError, match="served_unserved_rollup_unique_area_per_state"),
         transaction.atomic(),
     ):
-        make_rollup(release)
+        make_rollup(release, state)
 
 
-def test_area_can_appear_in_two_releases(release: Release, rollup: Rollup) -> None:
+def test_area_can_appear_in_two_releases(release: Release, state: State, rollup: Rollup) -> None:
     other = Release.objects.create(
         filing_period="J26", as_of=date(2026, 6, 30), processed_on=date(2026, 9, 29)
     )
 
-    make_rollup(other)
+    make_rollup(other, state)
 
     assert Rollup.objects.filter(code="39049").count() == 2
+
+
+def test_h3_cell_has_a_row_per_state(release: Release, state: State, wv_state: State) -> None:
+    for each in (state, wv_state):
+        make_rollup(release, each, level="h3_res8", code="882a91ae3bfffff")
+
+    assert Rollup.objects.filter(code="882a91ae3bfffff").count() == 2
+
+
+def test_state_with_rollups_cannot_be_deleted(state: State, rollup: Rollup) -> None:
+    with pytest.raises(ProtectedError):
+        state.delete()
 
 
 def test_deleting_a_release_deletes_its_rollups(release: Release, rollup: Rollup) -> None:
@@ -215,15 +232,15 @@ def test_rollup_str(rollup: Rollup) -> None:
     assert str(rollup) == "County 39049 in December 2025 (processed 2026-09-29)"
 
 
-def test_h3_rollup_str(release: Release) -> None:
-    rollup = make_rollup(release, level="h3_res8", code="882a91ae3bfffff")
+def test_h3_rollup_str(release: Release, state: State) -> None:
+    rollup = make_rollup(release, state, level="h3_res8", code="882a91ae3bfffff")
 
     assert str(rollup) == (
         "H3 resolution-8 cell 882a91ae3bfffff in December 2025 (processed 2026-09-29)"
     )
 
 
-def test_place_rollup_str(release: Release) -> None:
-    rollup = make_rollup(release, level="place", code="3918000")
+def test_place_rollup_str(release: Release, state: State) -> None:
+    rollup = make_rollup(release, state, level="place", code="3918000")
 
     assert str(rollup) == "Place 3918000 in December 2025 (processed 2026-09-29)"

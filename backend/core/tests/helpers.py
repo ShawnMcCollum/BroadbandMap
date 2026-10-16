@@ -10,10 +10,11 @@ from django.db import connection, models, transaction
 from core.write_lock import take_write_lock
 
 # A load that another connection runs in the write-lock tests
-LOAD_RUNNING = "load of June 2025 (processed 2026-10-01)"
+LOAD_RUNNING = "load of state 39 into June 2025 (processed 2026-10-01)"
 # What a writer refused the lock is told while that load runs
 REFUSED_BY_LOAD = re.compile(
-    r"another writer is running: load of June 2025 \(processed 2026-10-01\), process \d+, "
+    r"another writer is running: load of state 39 into June 2025 \(processed 2026-10-01\), "
+    r"process \d+, "
     r"since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC; try again once it has finished"
 )
 

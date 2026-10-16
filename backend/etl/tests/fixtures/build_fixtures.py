@@ -7,8 +7,12 @@ The fixtures are a real slice of Ohio:
   blocks have their internal point in Troy township, and none is in a place.
   Middlefield is a seven-part MultiPolygon.
 - The state and county files also keep West Virginia and Brooke County, WV, to
-  test the Ohio filter. State outlines are simplified; everything else keeps
-  full detail.
+  test the state filter and for the West Virginia slice. State outlines are
+  simplified; everything else keeps full detail.
+- A real slice of West Virginia, the second state: Brooke County (54009),
+  census tract 311.03 (54009031103) with its 2 block groups and 77 blocks,
+  Weirton city and Weirton district. All 77 blocks have their internal point in
+  Weirton district, and 64 in Weirton city.
 - Two malformed tract files, and a county subdivision file without Troy
   township, for the tests of the loader's error messages.
 
@@ -46,6 +50,11 @@ ENTRIES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("tiger2020", "tl_2020_39_tabblock20", ("-where", "GEOID20 LIKE '39055312000%'")),
     ("tiger2020", "tl_2020_39_place", ("-where", "GEOID = '3959934'")),
     ("tiger2020", "tl_2020_39_cousub", ("-where", "GEOID IN ('3905577574','3905549714')")),
+    ("tiger2020", "tl_2020_54_tract", ("-where", "GEOID = '54009031103'")),
+    ("tiger2020", "tl_2020_54_bg", ("-where", "GEOID LIKE '54009031103%'")),
+    ("tiger2020", "tl_2020_54_tabblock20", ("-where", "GEOID20 LIKE '54009031103%'")),
+    ("tiger2020", "tl_2020_54_place", ("-where", "GEOID = '5485156'")),
+    ("tiger2020", "tl_2020_54_cousub", ("-where", "GEOID = '5400993552'")),
     (
         "malformed/missing_namelsad",
         "tl_2020_39_tract",

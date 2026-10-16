@@ -12,16 +12,17 @@ from core.maintenance import vacuum_analyze
 from core.write_lock import WriteLockHeld, take_write_lock
 from geography.models import Block
 from served_unserved.models import Rollup, RollupLevel
+from served_unserved.release_states import states_in_release
 from served_unserved.rollups import build_rollups
 
 
 class Command(BaseCommand):
     help = (
-        "Rebuild the Served/Not served rollups from the loaded statuses: of the release that "
-        "--as-of and --processed-on name, or of every loaded release when neither is given. "
-        "Then vacuum and analyze the rollups. A data load must first have assigned every census "
-        "block to its place and county subdivision. Stops at once if another data load, deletion "
-        "or rollup rebuild is running."
+        "Rebuild the Served/Not served rollups from the loaded statuses, for every state of the "
+        "release that --as-of and --processed-on name, or of every loaded release when neither "
+        "is given. Then vacuum and analyze the rollups. A data load must first have assigned "
+        "every census block to its place and county subdivision. Stops at once if another data "
+        "load, deletion or rollup rebuild is running."
     )
 
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -49,7 +50,14 @@ class Command(BaseCommand):
                     ).first()
                     if current is None:
                         raise CommandError(f"{release} is no longer loaded")
-                    count = sum(build_rollups(current, level) for level in RollupLevel)
+                    # Every row of the release goes, so a state without statuses keeps none
+                    # (ADR 0017).
+                    Rollup.objects.filter(release=current).delete()
+                    count = sum(
+                        build_rollups(current, state.geoid, level)
+                        for state in states_in_release(current)
+                        for level in RollupLevel
+                    )
             except WriteLockHeld as error:
                 raise CommandError(str(error)) from error
             self.stdout.write(self.style.SUCCESS(f"Built {count:,} rollups for {release}."))
