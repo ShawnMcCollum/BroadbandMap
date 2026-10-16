@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.http import HttpRequest
 
+from bdc.models import Release
 from core.admin import ReadOnlyModelAdmin
 from served_unserved.models import Rollup, ServedStatus
 
@@ -31,7 +32,10 @@ class ServedStatusAdmin(ReadOnlyModelAdmin):
         if not term:
             return queryset, False
         if term.isdecimal():
-            return queryset.filter(location_id=int(term)), False
+            # Naming every release lets the unique (release, location_id) index find the location
+            # with one probe per release; nothing indexes location_id alone (ADR 0021).
+            releases = list(Release.objects.order_by().values_list("pk", flat=True))
+            return queryset.filter(release_id__in=releases, location_id=int(term)), False
         return queryset.none(), False
 
 

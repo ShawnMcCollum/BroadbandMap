@@ -17,8 +17,9 @@ class ServedStatus(models.Model):
         related_name="served_statuses",
         db_index=False,
     )
+    # No index of its own: a search for a location names every release, so the unique
+    # (release, location_id) index finds it with one probe per release (ADR 0021).
     location_id = models.BigIntegerField(
-        db_index=True,
         help_text="FCC location ID from the Broadband Serviceable Location Fabric.",
     )
     block = models.ForeignKey(

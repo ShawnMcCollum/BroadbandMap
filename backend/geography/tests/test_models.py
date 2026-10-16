@@ -151,6 +151,16 @@ def test_county_subdivision_in_another_county_is_rejected(block: Block, state: S
         block.save()
 
 
+def test_two_states_cannot_share_an_abbreviation(state: State) -> None:
+    with (
+        pytest.raises(IntegrityError, match="geography_state_unique_abbreviation"),
+        transaction.atomic(),
+    ):
+        State.objects.create(
+            geoid="54", name="West Virginia", abbreviation=state.abbreviation, **boundary_fields()
+        )
+
+
 def test_area_with_blocks_cannot_be_deleted(
     place: Place, county_subdivision: CountySubdivision, block: Block
 ) -> None:

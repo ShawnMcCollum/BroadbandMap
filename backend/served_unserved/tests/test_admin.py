@@ -1,9 +1,13 @@
+from datetime import date
+
 import pytest
+from django.db import connection
 from django.test import Client
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from bdc.models import Release
-from geography.models import State
+from geography.models import Block, State
 from served_unserved.models import Rollup, ServedStatus
 
 CHANGELIST = "admin:served_unserved_servedstatus_changelist"
@@ -52,6 +56,62 @@ def test_search_by_location_id_finds_the_status(
 
     assert response.status_code == 200
     assert list(response.context["cl"].result_list) == [served_status]
+
+
+@pytest.fixture
+def j25_status(block: Block) -> ServedStatus:
+    """The served_status fixture's location, in the June 2025 release."""
+    j25 = Release.objects.create(
+        filing_period="J25", as_of=date(2025, 6, 30), processed_on=date(2026, 10, 1)
+    )
+    return ServedStatus.objects.create(
+        release=j25,
+        location_id=1000338835,
+        block=block,
+        h3_res8="882a91ae3bfffff",
+        any_100_20=True,
+        wired_100_20=False,
+        terrestrial_100_20=True,
+    )
+
+
+def test_search_by_location_id_finds_it_in_every_release(
+    admin_client: Client, served_status: ServedStatus, j25_status: ServedStatus
+) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"q": "1000338835"})
+
+    assert response.status_code == 200
+    assert set(response.context["cl"].result_list) == {served_status, j25_status}
+    assert response.context["cl"].result_count == 2
+
+
+def test_search_by_location_id_within_one_release(
+    admin_client: Client, served_status: ServedStatus, j25_status: ServedStatus
+) -> None:
+    response = admin_client.get(
+        reverse(CHANGELIST), {"q": "1000338835", "release__id__exact": str(j25_status.release_id)}
+    )
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [j25_status]
+
+
+# Nothing indexes location_id alone, so each query of the search names the releases, for the
+# unique (release, location_id) index (ADR 0021).
+def test_search_by_location_id_names_the_releases(
+    admin_client: Client, served_status: ServedStatus, j25_status: ServedStatus
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(reverse(CHANGELIST), {"q": "1000338835"})
+
+    searches = [
+        query["sql"]
+        for query in queries.captured_queries
+        if '"location_id" = 1000338835' in query["sql"]
+    ]
+    # The page's count and its rows
+    assert len(searches) >= 2
+    assert all('"release_id" IN (' in sql for sql in searches)
 
 
 # "²" passes str.isdigit() but int() rejects it.
