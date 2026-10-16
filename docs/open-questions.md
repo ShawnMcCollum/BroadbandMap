@@ -36,6 +36,7 @@ Answered in [#14](https://github.com/ShawnMcCollum/BroadbandMap/issues/14).
 | S1 | Which Python framework serves the API? | **Django**, with GeoDjango and Django REST Framework. The ETL lives in the same project. | [ADR 0002](decisions/0002-django-for-api-and-data-model.md) |
 | S2 | Does Celery have a place in the design? | **Yes.** Data loads run as Celery tasks, with Redis as the broker, and each load is recorded. | [ADR 0003](decisions/0003-celery-for-background-loads.md), [#15](https://github.com/ShawnMcCollum/BroadbandMap/issues/15) |
 | S3 | Does Streamlit have a place in the design? | **Yes.** An analyst dashboard alongside the map, reading data only through the API. | [ADR 0004](decisions/0004-streamlit-analyst-dashboard.md), [#16](https://github.com/ShawnMcCollum/BroadbandMap/issues/16) |
+| S4 | Who can access the API? | **Data reads are public.** Operational actions are restricted to authenticated administrators with the relevant operation permission. | [ADR 0015](decisions/0015-rest-api-contract-and-tests.md) |
 
 ### Project and process
 
