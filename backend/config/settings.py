@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.gis",
+    "rest_framework",
+    "drf_spectacular",
     "core",
     "geography",
     "bdc",
@@ -49,6 +51,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "core.api.middleware.ApiProblemBoundaryMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -106,3 +109,22 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": ["core.api.permissions.DenyAll"],
+    "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework.authentication.SessionAuthentication"],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "core.api.problems.api_exception_handler",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "BroadbandMap API",
+    "DESCRIPTION": (
+        "Versioned HTTP API foundation. Business resources are added in issues #3 and #26."
+    ),
+    "VERSION": "1.0.0",
+    "OAS_VERSION": "3.0.3",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
