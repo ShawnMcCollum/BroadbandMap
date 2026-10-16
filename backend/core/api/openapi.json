@@ -20,6 +20,54 @@
           }
         ]
       },
+      "ConfigurationResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "is_stub": {
+            "type": "boolean"
+          },
+          "key_available": {
+            "type": "boolean"
+          },
+          "key_configured": {
+            "type": "boolean"
+          },
+          "max_output_tokens": {
+            "type": "integer"
+          },
+          "model_name": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_validated": {
+            "type": "boolean"
+          },
+          "timeout_seconds": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "is_stub",
+          "key_available",
+          "key_configured",
+          "max_output_tokens",
+          "model_name",
+          "provider",
+          "provider_validated",
+          "timeout_seconds",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "CountyCollection": {
         "properties": {
           "boundary_vintage": {
@@ -321,6 +369,42 @@
           null
         ]
       },
+      "PatchedConfigurationPatch": {
+        "properties": {
+          "api_key": {
+            "description": "Replacement credential. Omit to preserve the saved key; never returned.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string",
+            "writeOnly": true
+          },
+          "clear_api_key": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "max_output_tokens": {
+            "maximum": 8192,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "model_name": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "maximum": 120,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "Problem": {
         "properties": {
           "code": {
@@ -356,7 +440,7 @@
         "type": "object"
       },
       "ProblemCodeEnum": {
-        "description": "* `parse_error` - parse_error\n* `bad_request` - bad_request\n* `not_authenticated` - not_authenticated\n* `authentication_failed` - authentication_failed\n* `permission_denied` - permission_denied\n* `not_found` - not_found\n* `method_not_allowed` - method_not_allowed\n* `not_acceptable` - not_acceptable\n* `unsupported_media_type` - unsupported_media_type\n* `throttled` - throttled\n* `internal_error` - internal_error\n* `service_unavailable` - service_unavailable\n* `dataset_changed` - dataset_changed\n* `http_error` - http_error",
+        "description": "* `parse_error` - parse_error\n* `bad_request` - bad_request\n* `not_authenticated` - not_authenticated\n* `authentication_failed` - authentication_failed\n* `permission_denied` - permission_denied\n* `not_found` - not_found\n* `method_not_allowed` - method_not_allowed\n* `not_acceptable` - not_acceptable\n* `unsupported_media_type` - unsupported_media_type\n* `throttled` - throttled\n* `internal_error` - internal_error\n* `service_unavailable` - service_unavailable\n* `natural_language_disabled` - natural_language_disabled\n* `ai_credentials_unavailable` - ai_credentials_unavailable\n* `dataset_changed` - dataset_changed\n* `http_error` - http_error",
         "enum": [
           "parse_error",
           "bad_request",
@@ -370,6 +454,8 @@
           "throttled",
           "internal_error",
           "service_unavailable",
+          "natural_language_disabled",
+          "ai_credentials_unavailable",
           "dataset_changed",
           "http_error"
         ],
@@ -381,6 +467,38 @@
           "about:blank"
         ],
         "type": "string"
+      },
+      "QueryRequest": {
+        "properties": {
+          "question": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "type": "object"
+      },
+      "QueryResponse": {
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "is_stub": {
+            "type": "boolean"
+          },
+          "question": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "answer",
+          "is_stub",
+          "question"
+        ],
+        "type": "object"
       },
       "ReleasePage": {
         "properties": {
@@ -581,6 +699,25 @@
         ],
         "type": "string"
       },
+      "StatusResponse": {
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "is_stub": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "is_stub",
+          "message"
+        ],
+        "type": "object"
+      },
       "SummaryCoverageEnum": {
         "description": "* `stored_rollups_only` - stored_rollups_only\n* `observed` - observed\n* `no_observations` - no_observations\n* `outside_release_coverage` - outside_release_coverage",
         "enum": [
@@ -664,10 +801,17 @@
         ],
         "type": "string"
       }
+    },
+    "securitySchemes": {
+      "cookieAuth": {
+        "in": "cookie",
+        "name": "sessionid",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
-    "description": "Public release discovery, Served/Not served summaries, and county GeoJSON. Location drill-down is planned in issue #26.",
+    "description": "Public release discovery, Served/Not served summaries, county GeoJSON, location drill-down, and an inert natural-language query stub.",
     "title": "BroadbandMap API",
     "version": "1.0.0"
   },
@@ -761,6 +905,347 @@
             "description": "Problem Details response"
           },
           "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/natural-language/": {
+      "get": {
+        "description": "Public availability of the inert stub. No provider or broadband queries are performed; detailed configuration is restricted to application administrators.",
+        "operationId": "natural_language_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/natural-language/configuration/": {
+      "get": {
+        "description": "Administrator-only installation settings. Credentials are never returned. Sets the CSRF cookie for a subsequent session-authenticated PATCH.",
+        "operationId": "natural_language_configuration_read",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigurationResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      },
+      "patch": {
+        "description": "Atomically update persistent AI settings. Omit api_key to preserve it; clear_api_key removes it and disables AI. Provider/model identifiers remain unverified. Requires an active staff session, manage_ai_configuration permission, and CSRF token.",
+        "operationId": "natural_language_configuration_update",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedConfigurationPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigurationResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/natural-language/query/": {
+      "post": {
+        "description": "Pass a question through the configured, read-only stub. Returns a fixed explanatory answer without provider calls or broadband data queries.",
+        "operationId": "natural_language_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "503": {
             "content": {
               "application/problem+json": {
                 "schema": {

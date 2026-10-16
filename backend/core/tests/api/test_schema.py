@@ -48,6 +48,9 @@ def test_production_schema_matches_business_contract_and_is_public(api_client: A
         "/api/v1/served-unserved/rollups/",
         "/api/v1/served-unserved/locations/",
         "/api/v1/geographies/county/",
+        "/api/v1/natural-language/",
+        "/api/v1/natural-language/configuration/",
+        "/api/v1/natural-language/query/",
     }
     assert not any("test_" in path for path in baseline["paths"])
 

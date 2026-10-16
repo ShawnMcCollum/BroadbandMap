@@ -8,4 +8,5 @@ urlpatterns = [
     path("", include("bdc.api.urls")),
     path("", include("geography.api.urls")),
     path("", include("served_unserved.api.urls")),
+    path("", include("natural_language.api.urls")),
 ]
