@@ -198,8 +198,23 @@ transaction, and changes no other release. If no release has those dates, it
 lists the dates of the releases that are loaded. Readers see the release until
 the deletion commits, and no query waits for it. The command then vacuums and
 analyzes the tables it changed, so the next data load reuses their space. For
-Ohio, it
-takes about ten seconds.
+Ohio, it takes about ten seconds.
+
+To delete one state from a release, such as a state loaded from the wrong
+file, add `--state` with its two-digit FIPS code:
+
+```powershell
+docker compose run --rm backend python manage.py delete_release --as-of 2025-12-31 --processed-on 2026-10-13 --state 54
+```
+
+It deletes that state's statuses and rollups in the release, and changes no
+other state or release. The state's census boundaries stay loaded, so loading
+its file again does not reload them. Deleting the release's last state also
+deletes the release; the confirmation question says so first. If the release
+does not hold the state, the command lists the states it holds. As for a whole
+release, the deletion is one transaction, no query waits for it, and the
+tables it changed are then vacuumed and analyzed. For Ohio, it takes about
+15 seconds.
 
 ### API foundation
 
