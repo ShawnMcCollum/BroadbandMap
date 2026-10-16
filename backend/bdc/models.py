@@ -18,6 +18,9 @@ class Release(models.Model):
     )
 
     class Meta:
+        # The API's release list and its default, latest release follow this order (ADR 0013,
+        # decision 6). A model ordered by "release" joins this table and sorts by it, which no
+        # index serves; order by "release_id" instead (ADR 0022).
         ordering = ["-as_of", "-processed_on"]
         constraints = [
             models.UniqueConstraint(

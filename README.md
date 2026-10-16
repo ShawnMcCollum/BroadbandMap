@@ -398,6 +398,7 @@ Architectural and scope decisions are recorded in
 - [0019 — Location drill-down with release-wide cursor generations](docs/decisions/0019-location-cursors.md)
 - [0020 — Natural-language stub with persistent application configuration](docs/decisions/0020-natural-language-query-stub.md)
 - [0021 — An index only where a query reads through it](docs/decisions/0021-indexes-only-where-queries-read.md)
+- [0022 — Status admin pages read an index](docs/decisions/0022-status-admin-pages-read-an-index.md)
 
 The adopted REST API conventions and implementation guidance are in
 [docs/api-guidelines.md](docs/api-guidelines.md).

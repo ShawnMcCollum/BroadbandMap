@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-16
 - **Amends:** [0012](0012-location-placement-per-release.md), decision 2
+- **Amended by:** [0022](0022-status-admin-pages-read-an-index.md), which adds `servedstatus_not_served`
 - **Related:** [0008](0008-served-not-served-rollups.md), [0017](0017-national-releases-loaded-by-state.md), [0019](0019-location-cursors.md), [#43](https://github.com/ShawnMcCollum/BroadbandMap/issues/43)
 
 ## Context
@@ -92,6 +93,10 @@ statuses reach the unique `(release, location_id)` index in key order.
    - The statuses' primary key, the unique `(release, location_id)` index,
      `servedstatus_release_block` and `servedstatus_release_h3`
      ([0012](0012-location-placement-per-release.md)).
+     - *Amended by [0022](0022-status-admin-pages-read-an-index.md):*
+       `servedstatus_not_served` stays as well, a partial index on
+       `(release, location_id)` where `NOT any_100_20`, read by the admin's
+       not-served filter and the location drill-down's not-served pages.
    - The rollups' primary key, their unique index and
      `rollup_release_state_level`
      ([0017](0017-national-releases-loaded-by-state.md)).
