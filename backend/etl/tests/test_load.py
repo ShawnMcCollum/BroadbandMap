@@ -1,6 +1,7 @@
 import json
 import re
 import shutil
+import time
 from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
 from datetime import date
@@ -12,11 +13,18 @@ from django.db.models import F, ForeignObjectRel
 from pytest import MonkeyPatch
 
 from bdc.models import Release
-from core.tests.helpers import exclusive_locks
+from core.tests.helpers import (
+    LOAD_RUNNING,
+    REFUSED_BY_LOAD,
+    backend_pid,
+    exclusive_locks,
+    lock_held_elsewhere,
+)
+from core.write_lock import Holder, WriteLockHeld, write_lock_holder
 from etl.errors import LoadError, ReconciliationError
 from etl.fcc import LocationRow, read_locations
 from etl.files import FccFile
-from etl.load import LOADER_MODELS, LoadResult, load_served_unserved
+from etl.load import LOADER_MODELS, LoadResult, check_one_state, load_served_unserved
 from etl.reconcile import Counts, database_counts
 from etl.tests.helpers import (
     FCC_STEM,
@@ -405,6 +413,43 @@ def test_no_load_takes_a_lock_that_blocks_readers(tmp_path: Path) -> None:
     load_served_unserved(data_dir, progress=record, replace=True)
 
     assert held == [[], [], []]
+
+
+def test_takes_the_write_lock_before_reading_the_database(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    holders: list[Holder | None] = []
+
+    def record(state_fips: str) -> None:
+        holders.append(write_lock_holder())
+        check_one_state(state_fips)
+
+    monkeypatch.setattr("etl.load.check_one_state", record)
+
+    load(tmp_path)
+
+    assert len(holders) == 1
+    assert holders[0] is not None
+    assert (holders[0].pid, holders[0].operation) == (
+        backend_pid(),
+        "load of December 2025 (processed 2026-09-29)",
+    )
+
+
+def test_refused_while_another_writer_runs(tmp_path: Path) -> None:
+    data_dir = make_data_dir(tmp_path)
+    messages: list[str] = []
+
+    with lock_held_elsewhere(LOAD_RUNNING):
+        began = time.monotonic()
+        with pytest.raises(WriteLockHeld) as refused:
+            load_served_unserved(data_dir, progress=messages.append)
+        elapsed = time.monotonic() - began
+
+    assert REFUSED_BY_LOAD.fullmatch(str(refused.value))
+    assert elapsed < 1
+    assert messages == []
+    assert table_counts() == EMPTY_COUNTS
 
 
 def test_only_loader_tables_refer_to_loader_tables() -> None:

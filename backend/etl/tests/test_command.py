@@ -6,7 +6,7 @@ import pytest
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from core.tests.helpers import table_stats
+from core.tests.helpers import LOAD_RUNNING, REFUSED_BY_LOAD, lock_held_elsewhere, table_stats
 from etl.load import LOADER_MODELS
 from etl.management.commands.load_served_unserved import Command
 from etl.tests.helpers import J25_STEM, j25_csv, make_data_dir
@@ -69,6 +69,17 @@ def test_command_refuses_a_loaded_release(tmp_path: Path) -> None:
 
     with pytest.raises(CommandError, match="is already loaded; use --replace to load it again"):
         call_command("load_served_unserved", data_dir=data_dir, stdout=StringIO())
+
+
+@pytest.mark.django_db
+def test_command_reports_the_running_writer(tmp_path: Path) -> None:
+    data_dir = make_data_dir(tmp_path)
+
+    with lock_held_elsewhere(LOAD_RUNNING), pytest.raises(CommandError) as refused:
+        call_command("load_served_unserved", data_dir=data_dir, stdout=StringIO())
+
+    assert REFUSED_BY_LOAD.fullmatch(str(refused.value))
+    assert ServedStatus.objects.count() == 0
 
 
 def test_default_options() -> None:

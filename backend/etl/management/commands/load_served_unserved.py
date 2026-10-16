@@ -8,6 +8,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from bdc.models import Release
 from core.maintenance import vacuum_analyze
+from core.write_lock import WriteLockHeld
 from etl.errors import LoadError
 from etl.files import DEFAULT_DATA_DIR
 from etl.load import LOADER_MODELS, load_served_unserved
@@ -17,7 +18,8 @@ class Command(BaseCommand):
     help = (
         "Add the release in an FCC Served/Unserved file to the database, beside the releases "
         "already loaded. The first load also loads the Census boundary files from the data "
-        "directory. Once the load has committed, the loaded tables are vacuumed and analyzed."
+        "directory. Once the load has committed, the loaded tables are vacuumed and analyzed. "
+        "Stops at once if another data load, deletion or rollup rebuild is running."
     )
 
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -49,7 +51,7 @@ class Command(BaseCommand):
                 fcc_file=options["fcc_file"],
                 replace=options["replace"],
             )
-        except LoadError as error:
+        except (LoadError, WriteLockHeld) as error:
             raise CommandError(str(error)) from error
 
         release = Release.objects.get(as_of=result.as_of, processed_on=result.processed_on)

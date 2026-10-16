@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
-- **Amended by:** [0014](0014-vacuum-after-each-data-load.md), which vacuums and analyzes the loaded tables after each data load
+- **Amended by:** [0014](0014-vacuum-after-each-data-load.md), which vacuums and analyzes the loaded tables after each data load, and [0015](0015-one-writer-at-a-time.md), which lets one data load, deletion or rollup rebuild run at a time
 
 ## Context
 
@@ -192,5 +192,10 @@ area's statuses does not:
   or the same release, fail when the first commits.
   [#45](https://github.com/ShawnMcCollum/BroadbandMap/issues/45) makes the
   second one fail at once.
+  - *Amended by [0015](0015-one-writer-at-a-time.md):* no two writers of the
+    loaded tables run at once, and the second stops within a second, naming
+    the first. Two loads of different releases did not fail, but did not run
+    side by side either: the second waited at its `ANALYZE` until the first
+    committed.
 - **Follow-up:** #15 records each load in `LoadRun` by the release's dates,
   with no foreign key to `Release`.
