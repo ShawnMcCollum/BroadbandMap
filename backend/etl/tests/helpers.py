@@ -5,9 +5,15 @@ import zipfile
 from collections.abc import Mapping
 from pathlib import Path
 
+from django.db import connection
+
+from etl.load import LOADER_MODELS
+
 FIXTURES = Path(__file__).parent / "fixtures"
 MALFORMED = FIXTURES / "malformed"
 FCC_STEM = "bdc_39_fixed_broadband_served_unserved_D25_29sep2026"
+# A second release: June 2025, processed after December 2025, as the FCC did
+J25_STEM = "bdc_39_fixed_broadband_served_unserved_J25_01oct2026"
 
 # The fixture CSV's rollups: (level, code, locations, any, wired, terrestrial), sorted. The
 # fixture blocks lie in Troy township and in no place.
@@ -32,10 +38,36 @@ FIXTURE_ROLLUPS = [
     ("tract", "39055312000", 31, 30, 10, 20),
 ]
 
+# The rollups of j25_csv(): the fixture CSV without its last row, location 1004026994, the only
+# location in block 390553120001004 and cell 882ab14f59fffff, and served by nothing
+J25_ROLLUPS = [
+    ("block", "390553120001013", 5, 5, 0, 5),
+    ("block", "390553120002011", 8, 8, 5, 6),
+    ("block", "390553120002014", 7, 7, 5, 6),
+    ("block", "390553120002016", 3, 3, 0, 3),
+    ("block", "390553120002019", 7, 7, 0, 0),
+    ("block_group", "390553120001", 5, 5, 0, 5),
+    ("block_group", "390553120002", 25, 25, 10, 15),
+    ("county", "39055", 30, 30, 10, 20),
+    ("county_subdivision", "3905577574", 30, 30, 10, 20),
+    ("h3_res8", "882ab14c07fffff", 7, 7, 0, 0),
+    ("h3_res8", "882ab14c65fffff", 1, 1, 0, 1),
+    ("h3_res8", "882ab14e23fffff", 1, 1, 0, 1),
+    ("h3_res8", "882ab14e27fffff", 7, 7, 0, 7),
+    ("h3_res8", "882ab14f31fffff", 1, 1, 0, 1),
+    ("h3_res8", "882ab14f33fffff", 13, 13, 10, 10),
+    ("tract", "39055312000", 30, 30, 10, 20),
+]
+
 
 def fixture_csv() -> str:
     """The fixture CSV's text."""
     return (FIXTURES / "served_unserved.csv").read_text(encoding="utf-8")
+
+
+def j25_csv() -> str:
+    """The fixture CSV without its last row, as a second release's file."""
+    return "\n".join(fixture_csv().splitlines()[:-1]) + "\n"
 
 
 def edit_csv(line: int, column: str, value: str) -> str:
@@ -70,3 +102,11 @@ def make_data_dir(
     with zipfile.ZipFile(raw / f"{fcc_stem}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(f"{fcc_stem}.csv", fixture_csv() if csv is None else csv)
     return raw
+
+
+def clear_tables() -> None:
+    """Empty every table the loader owns, in one statement."""
+    quote = connection.ops.quote_name
+    tables = ", ".join(quote(model._meta.db_table) for model in LOADER_MODELS)
+    with connection.cursor() as cursor:
+        cursor.execute(f"TRUNCATE {tables}")

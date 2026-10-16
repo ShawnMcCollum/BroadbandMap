@@ -1,4 +1,4 @@
-"""Load the FCC Served/Unserved file and the Census boundary files into the database."""
+"""Add a release from an FCC Served/Unserved file, with the Census boundaries on the first load."""
 
 from argparse import ArgumentParser
 from pathlib import Path
@@ -14,8 +14,9 @@ from etl.load import load_served_unserved
 
 class Command(BaseCommand):
     help = (
-        "Load the FCC Served/Unserved file and the Census boundary files from the data "
-        "directory, replacing any data loaded before."
+        "Add the release in an FCC Served/Unserved file to the database, beside the releases "
+        "already loaded. The first load also loads the Census boundary files from the data "
+        "directory."
     )
 
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -25,14 +26,32 @@ class Command(BaseCommand):
             default=DEFAULT_DATA_DIR,
             help=f"directory holding the source files (default: {DEFAULT_DATA_DIR})",
         )
+        parser.add_argument(
+            "--fcc-file",
+            type=Path,
+            help=(
+                "FCC Served/Unserved zip to load, when the data directory holds more than one; "
+                "a relative path is taken from the data directory"
+            ),
+        )
+        parser.add_argument(
+            "--replace",
+            action="store_true",
+            help="load the release again if it is already loaded, replacing it",
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         try:
-            result = load_served_unserved(options["data_dir"], progress=self.stdout.write)
+            result = load_served_unserved(
+                options["data_dir"],
+                progress=self.stdout.write,
+                fcc_file=options["fcc_file"],
+                replace=options["replace"],
+            )
         except LoadError as error:
             raise CommandError(str(error)) from error
 
-        release = Release.objects.get(pk=result.release_id)
+        release = Release.objects.get(as_of=result.as_of, processed_on=result.processed_on)
         locations = result.database.rows["served_status"]
         self.stdout.write(
             self.style.SUCCESS(

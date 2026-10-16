@@ -97,10 +97,12 @@ loaded data is kept.
    docker compose run --rm backend python manage.py load_served_unserved
    ```
 
-The data load takes about six minutes and replaces any data loaded
-before. The application keeps running meanwhile. If a file is missing or
-malformed, or the loaded counts do not match the files, it stops with an error
-and leaves the database unchanged.
+The first data load takes about six minutes: it loads the census boundaries
+and the December 2025 release. If a file is missing or malformed, or the
+loaded counts do not match the files, it stops with an error and leaves the
+database unchanged. The application keeps running meanwhile, and no query
+waits for a data load
+([ADR 0013](docs/decisions/0013-release-scoped-data-loads.md)).
 
 Each data load also assigns every census block to the place and county
 subdivision that hold its internal point, then counts the Served/Not served
@@ -112,15 +114,33 @@ without a full reload, run:
 docker compose run --rm backend python manage.py build_rollups
 ```
 
-A database loaded before places and county subdivisions had rollups needs a
-full data load first: `build_rollups` stops with an error until every census
-block is assigned.
+A database loaded before places and county subdivisions had rollups has
+census blocks without them, and data loads and `build_rollups` stop with an
+error on it. A data load never reloads the census boundaries, so empty the
+database and load it again: `docker compose down -v` removes the database and
+everything in it.
 
 Starting the backend applies any pending database migrations. On a database
 loaded before [ADR 0012](docs/decisions/0012-location-placement-per-release.md),
 the first start copies each location's census block and H3 cell onto its
 Served/Unserved statuses. It takes about two minutes for Ohio, and no reload
 is needed.
+
+#### Add another release
+
+Each data load adds one release beside those already loaded, and never
+changes another. To add the June 2025 release, download it as described in
+[`data/README.md`](data/README.md#3-a-second-release-optional). Since
+`data/raw/` then holds two FCC files, name the one to load:
+
+```powershell
+docker compose run --rm backend python manage.py load_served_unserved --fcc-file bdc_39_fixed_broadband_served_unserved_J25_01oct2026.zip
+```
+
+It takes about three minutes, since the census boundaries are already
+loaded. Releases can be loaded in any order. Loading a release that is
+already loaded stops with an error; add `--replace` to load it again. Until
+the replacement is committed, readers see the release as it was.
 
 ### Checks
 
@@ -133,7 +153,7 @@ docker compose run --rm --no-deps web pnpm check
 ```
 
 The full-data suite loads the real files in `data/raw/` and checks the result
-against independent readers of those files. It takes about 18 minutes:
+against independent readers of those files. It takes about 12 minutes:
 
 ```powershell
 docker compose run --rm backend pytest -m full_data
@@ -156,6 +176,7 @@ Architectural and scope decisions are recorded in
 - [0010 — Rollups by place and county subdivision](docs/decisions/0010-place-and-county-subdivision-rollups.md)
 - [0011 — Shared memory for the database container](docs/decisions/0011-database-shared-memory.md)
 - [0012 — A location's block and H3 cell are stored per release](docs/decisions/0012-location-placement-per-release.md)
+- [0013 — A data load adds one release](docs/decisions/0013-release-scoped-data-loads.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

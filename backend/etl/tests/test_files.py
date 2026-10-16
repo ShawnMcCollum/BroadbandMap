@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from etl.errors import LoadError
-from etl.files import check_files, find_fcc_file, tiger_path
-from etl.tests.helpers import FCC_STEM, make_data_dir
+from etl.files import check_files, find_fcc_file, read_fcc_name, tiger_path
+from etl.tests.helpers import FCC_STEM, J25_STEM, make_data_dir
 from etl.tiger import LEVELS
 
 
@@ -67,8 +67,27 @@ def test_two_fcc_files(tmp_path: Path) -> None:
     older = "bdc_39_fixed_broadband_served_unserved_D24_01jan2025"
     shutil.copy(data_dir / f"{FCC_STEM}.zip", data_dir / f"{older}.zip")
 
-    with pytest.raises(LoadError, match="found 2 FCC Served/Unserved files"):
+    with pytest.raises(
+        LoadError, match=r"found 2 FCC Served/Unserved files in .*; choose one with --fcc-file"
+    ):
         find_fcc_file(data_dir)
+
+
+def test_read_fcc_name_reads_the_named_file(tmp_path: Path) -> None:
+    data_dir = make_data_dir(tmp_path)
+    make_data_dir(tmp_path, fcc_stem=J25_STEM)
+
+    fcc = read_fcc_name(data_dir / f"{J25_STEM}.zip")
+
+    assert fcc.path == data_dir / f"{J25_STEM}.zip"
+    assert fcc.filing_period == "J25"
+    assert fcc.as_of == date(2025, 6, 30)
+    assert fcc.processed_on == date(2026, 10, 1)
+
+
+def test_read_fcc_name_of_a_missing_file(tmp_path: Path) -> None:
+    with pytest.raises(LoadError, match=r"missing file .*nope\.zip"):
+        read_fcc_name(tmp_path / "nope.zip")
 
 
 def test_unrecognised_fcc_name(tmp_path: Path) -> None:

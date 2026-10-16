@@ -33,11 +33,17 @@ class Counts:
         }
 
 
-def database_counts(release: Release) -> Counts:
-    """Count the loaded rows, with statuses limited to ``release``."""
+def database_counts(release: Release, boundaries_of: str | None = None) -> Counts:
+    """Count what the database holds of ``release``.
+
+    The boundary rows of the state ``boundaries_of`` are counted too, for a load that wrote
+    them. Every boundary GEOID starts with its state's FIPS code.
+    """
     counts = Counts()
-    for level in LEVELS:
-        counts.rows[level.label] = level.model._default_manager.count()
+    if boundaries_of is not None:
+        for level in LEVELS:
+            boundaries = level.model._default_manager.filter(pk__startswith=boundaries_of)
+            counts.rows[level.label] = boundaries.count()
 
     statuses = ServedStatus.objects.filter(release=release)
     counts.rows["served_status"] = statuses.count()

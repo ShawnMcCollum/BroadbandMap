@@ -1,13 +1,14 @@
 import json
 import re
+import shutil
 from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
 from datetime import date
 from pathlib import Path
 
 import pytest
-from django.db import transaction
-from django.db.models import F
+from django.db import connection, transaction
+from django.db.models import F, ForeignObjectRel
 from pytest import MonkeyPatch
 
 from bdc.models import Release
@@ -16,7 +17,16 @@ from etl.fcc import LocationRow, read_locations
 from etl.files import FccFile
 from etl.load import LOADER_MODELS, LoadResult, load_served_unserved
 from etl.reconcile import Counts, database_counts
-from etl.tests.helpers import FCC_STEM, FIXTURE_ROLLUPS, MALFORMED, edit_csv, make_data_dir
+from etl.tests.helpers import (
+    FCC_STEM,
+    FIXTURE_ROLLUPS,
+    J25_ROLLUPS,
+    J25_STEM,
+    MALFORMED,
+    edit_csv,
+    j25_csv,
+    make_data_dir,
+)
 from etl.tiger import LEVELS
 from geography.models import (
     Block,
@@ -28,6 +38,7 @@ from geography.models import (
     State,
     Tract,
 )
+from geography.tests.helpers import boundary_fields
 from served_unserved.models import Rollup, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, build_rollups
 
@@ -47,13 +58,47 @@ FIXTURE_COUNTS = {
 }
 EMPTY_COUNTS = dict.fromkeys(FIXTURE_COUNTS, 0)
 
+# Relations this connection holds ACCESS EXCLUSIVE locks on. A read takes an ACCESS SHARE lock,
+# which no other lock mode blocks.
+EXCLUSIVE_LOCKS = """
+SELECT DISTINCT c.relname
+FROM pg_locks AS l
+JOIN pg_class AS c ON c.oid = l.relation
+WHERE l.pid = pg_backend_pid() AND l.mode = 'AccessExclusiveLock'
+ORDER BY 1
+"""
+
 
 def table_counts() -> dict[str, int]:
     return {model.__name__: model._default_manager.count() for model in LOADER_MODELS}
 
 
-def load(tmp_path: Path, csv: str | None = None) -> LoadResult:
-    return load_served_unserved(make_data_dir(tmp_path, csv=csv))
+def load(tmp_path: Path, csv: str | None = None, *, replace: bool = False) -> LoadResult:
+    return load_served_unserved(make_data_dir(tmp_path, csv=csv), replace=replace)
+
+
+def load_j25(tmp_path: Path) -> LoadResult:
+    """Load the second release, June 2025, from its own data directory."""
+    return load_served_unserved(make_data_dir(tmp_path / "j25", csv=j25_csv(), fcc_stem=J25_STEM))
+
+
+def rollups(release: Release) -> list[tuple[object, ...]]:
+    return sorted(
+        Rollup.objects.filter(release=release).values_list("level", "code", *COUNT_FIELDS)
+    )
+
+
+def snapshot(release: Release) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
+    """A release's status and rollup rows, row ids included."""
+    statuses = ServedStatus.objects.filter(release=release).order_by("id").values_list()
+    rollup_rows = Rollup.objects.filter(release=release).order_by("id").values_list()
+    return list(statuses), list(rollup_rows)
+
+
+def exclusive_locks() -> list[str]:
+    with connection.cursor() as cursor:
+        cursor.execute(EXCLUSIVE_LOCKS)
+        return [name for (name,) in cursor.fetchall()]
 
 
 def test_loads_the_fixture_files(tmp_path: Path) -> None:
@@ -230,27 +275,163 @@ def test_release_comes_from_the_file_name(tmp_path: Path) -> None:
     assert release.filing_period == "D25"
     assert release.as_of == date(2025, 12, 31)
     assert release.processed_on == date(2026, 9, 29)
-    assert result.release_id == release.pk
+    assert (result.as_of, result.processed_on) == (release.as_of, release.processed_on)
+    assert result.as_dict()["as_of"] == "2025-12-31"
+    assert result.as_dict()["processed_on"] == "2026-09-29"
 
 
-def test_loading_twice_leaves_the_same_rows(tmp_path: Path) -> None:
+def test_second_release_is_added_beside_the_first(tmp_path: Path) -> None:
+    load(tmp_path)
+    december = Release.objects.get()
+    before = snapshot(december)
+
+    result = load_j25(tmp_path)
+
+    assert [str(release) for release in Release.objects.all()] == [
+        "December 2025 (processed 2026-09-29)",
+        "June 2025 (processed 2026-10-01)",
+    ]
+    assert snapshot(december) == before
+    june = Release.objects.get(filing_period="J25")
+    assert rollups(june) == J25_ROLLUPS
+    assert table_counts() == FIXTURE_COUNTS | {"Release": 2, "ServedStatus": 61, "Rollup": 34}
+    assert (result.as_of, result.processed_on) == (date(2025, 6, 30), date(2026, 10, 1))
+    assert result.source == result.database
+    assert result.source.rows == {"served_status": 30}
+
+
+def test_second_release_needs_no_tiger_files(tmp_path: Path) -> None:
+    load(tmp_path)
+    data_dir = make_data_dir(tmp_path / "j25", csv=j25_csv(), fcc_stem=J25_STEM)
+    shutil.rmtree(data_dir / "tiger2020")
+
+    load_served_unserved(data_dir)
+
+    assert Release.objects.count() == 2
+
+
+def test_releases_load_in_any_order(tmp_path: Path) -> None:
+    load_j25(tmp_path)
+    load(tmp_path)
+
+    december, june = Release.objects.all()
+    assert (december.filing_period, june.filing_period) == ("D25", "J25")
+    assert rollups(december) == FIXTURE_ROLLUPS
+    assert rollups(june) == J25_ROLLUPS
+
+
+def test_fcc_file_chooses_among_several(tmp_path: Path) -> None:
+    data_dir = make_data_dir(tmp_path)
+    make_data_dir(tmp_path, csv=j25_csv(), fcc_stem=J25_STEM)
+
+    load_served_unserved(data_dir, fcc_file=Path(f"{J25_STEM}.zip"))
+    load_served_unserved(data_dir, fcc_file=data_dir / f"{FCC_STEM}.zip")
+
+    assert list(Release.objects.values_list("filing_period", flat=True)) == ["D25", "J25"]
+
+
+def test_loaded_release_is_refused(tmp_path: Path) -> None:
+    load(tmp_path)
+    before = snapshot(Release.objects.get())
+
+    with pytest.raises(
+        LoadError,
+        match=re.escape(
+            "December 2025 (processed 2026-09-29) is already loaded; use --replace to load it again"
+        ),
+    ):
+        load(tmp_path)
+
+    assert snapshot(Release.objects.get()) == before
+
+
+def test_replace_loads_the_release_again(tmp_path: Path) -> None:
     first = load(tmp_path)
-    second = load(tmp_path)
+
+    second = load(tmp_path, replace=True)
 
     assert table_counts() == FIXTURE_COUNTS
-    assert Release.objects.count() == 1
-    assert second.database == first.database
+    assert second.source == second.database
+    assert second.database.rows == {"served_status": 31}
+    for name in ("flag_combinations", "locations_per_county", "county_rollups", "rollup_totals"):
+        assert getattr(second.database, name) == getattr(first.database, name), name
 
 
-def test_failed_load_leaves_the_database_unchanged(tmp_path: Path) -> None:
+def test_replace_leaves_other_releases_alone(tmp_path: Path) -> None:
+    load(tmp_path)
+    load_j25(tmp_path)
+    june = Release.objects.get(filing_period="J25")
+    before = snapshot(june)
+
+    load(tmp_path, replace=True)
+
+    assert snapshot(june) == before
+    assert rollups(Release.objects.get(filing_period="D25")) == FIXTURE_ROLLUPS
+
+
+def test_failed_replace_leaves_the_database_unchanged(tmp_path: Path) -> None:
     load(tmp_path / "good")
-    release_pk = Release.objects.get().pk
+    release = Release.objects.get()
+    before = snapshot(release)
 
-    with pytest.raises(LoadError):
-        load(tmp_path / "bad", csv=edit_csv(7, "wired_dl100_ul20", "2"))
+    with pytest.raises(LoadError, match="wired_dl100_ul20 must be 0 or 1"):
+        load(tmp_path / "bad", csv=edit_csv(7, "wired_dl100_ul20", "2"), replace=True)
 
     assert table_counts() == FIXTURE_COUNTS
-    assert Release.objects.get().pk == release_pk
+    assert snapshot(release) == before
+
+
+def test_another_state_is_refused(tmp_path: Path) -> None:
+    State.objects.create(geoid="54", name="West Virginia", abbreviation="WV", **boundary_fields())
+
+    with pytest.raises(
+        LoadError, match="the database holds the census boundaries of West Virginia"
+    ):
+        load(tmp_path)
+
+    assert table_counts() == EMPTY_COUNTS | {"State": 1}
+
+
+def test_blocks_without_a_county_subdivision_are_refused(tmp_path: Path) -> None:
+    load(tmp_path)
+    Block.objects.filter(pk="390553120001004").update(county_subdivision=None)
+
+    with pytest.raises(
+        LoadError,
+        match=re.escape("census blocks without a county subdivision: 390553120001004;"),
+    ):
+        load_j25(tmp_path)
+
+    assert Release.objects.count() == 1
+
+
+def test_no_load_takes_a_lock_that_blocks_readers(tmp_path: Path) -> None:
+    # Locks are held until the transaction ends, so the last message inside it sees them all.
+    held: list[list[str]] = []
+
+    def record(message: str) -> None:
+        if message == "Reconciling counts":
+            held.append(exclusive_locks())
+
+    data_dir = make_data_dir(tmp_path)
+    load_served_unserved(data_dir, progress=record)
+    j25_dir = make_data_dir(tmp_path / "j25", csv=j25_csv(), fcc_stem=J25_STEM)
+    load_served_unserved(j25_dir, progress=record)
+    load_served_unserved(data_dir, progress=record, replace=True)
+
+    assert held == [[], [], []]
+
+
+def test_only_loader_tables_refer_to_loader_tables() -> None:
+    # Deleting a release, or emptying the loaded tables, then reaches no other data.
+    owned = set(LOADER_MODELS)
+    for model in LOADER_MODELS:
+        for relation in model._meta.get_fields(include_hidden=True):
+            if isinstance(relation, ForeignObjectRel):
+                referrer = relation.field.model
+                assert referrer in owned, (
+                    f"{referrer.__name__}.{relation.field.name} refers to {model.__name__}"
+                )
 
 
 def test_rejected_tiger_file_rolls_back(tmp_path: Path) -> None:
@@ -289,8 +470,8 @@ def test_duplicate_location_id(tmp_path: Path) -> None:
 
 
 def test_reconciliation_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    def short_by_one(release: Release) -> Counts:
-        counts = database_counts(release)
+    def short_by_one(release: Release, boundaries_of: str | None = None) -> Counts:
+        counts = database_counts(release, boundaries_of)
         counts.rows["served_status"] -= 1
         return counts
 
@@ -360,6 +541,23 @@ def test_progress_reports_each_table(tmp_path: Path) -> None:
     ):
         assert any(message.startswith(f"rollups by {level}: {rows} rows") for message in messages)
     assert "Reconciling counts" in messages
+
+
+def test_progress_when_the_boundaries_are_loaded(tmp_path: Path) -> None:
+    load(tmp_path)
+    messages: list[str] = []
+
+    load_served_unserved(make_data_dir(tmp_path), progress=messages.append, replace=True)
+
+    assert any(
+        message.startswith("Deleted December 2025 (processed 2026-09-29) in ")
+        for message in messages
+    )
+    assert "Census boundaries for Ohio are already loaded" in messages
+    assert not any(message.startswith("census blocks:") for message in messages)
+    assert not any(message.startswith("block assignment:") for message in messages)
+    assert any(message.startswith("served statuses: 31 rows") for message in messages)
+    assert "Analyzing statuses" in messages
 
 
 def test_refuses_to_run_inside_another_transaction(tmp_path: Path) -> None:

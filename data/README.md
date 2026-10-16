@@ -88,3 +88,13 @@ State and county files cover the whole country; the loader keeps only Ohio.
 
 H3 hexagon boundaries are computed from the FCC file's `h3_res8_id` column, so
 they need no download.
+
+## 3. A second release (optional)
+
+A data load adds one release beside those already loaded. To try it with a
+second release, download the June 2025 Ohio file as in section 1, but with
+**Availability Data As Of** set to **Jun 30, 2025**, and save it to
+`data/raw/`. The file is named
+`bdc_39_fixed_broadband_served_unserved_J25_01oct2026.zip`: the FCC processed
+the June 2025 data on 1 October 2026, after the December 2025 data. Load it as
+described in [Add another release](../README.md#add-another-release).

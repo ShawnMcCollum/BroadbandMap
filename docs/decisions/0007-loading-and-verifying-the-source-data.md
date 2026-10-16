@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-14
+- **Amended by:** [0013](0013-release-scoped-data-loads.md), which makes a data load add one release beside those already loaded, instead of replacing all loaded data
 
 ## Context
 
