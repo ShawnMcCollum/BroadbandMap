@@ -24,8 +24,8 @@ class Command(BaseCommand):
             raise CommandError("no release is loaded; run load_served_unserved first")
         if Block.objects.filter(county_subdivision=None).exists():
             raise CommandError(
-                "some census blocks have no county subdivision; "
-                "run load_served_unserved to assign them"
+                "some census blocks have no county subdivision; the database was loaded "
+                "before blocks were assigned, so empty it and load again"
             )
         for release in releases:
             # One transaction per release, so a failure keeps that release's previous rollups.

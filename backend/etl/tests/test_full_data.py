@@ -1,7 +1,7 @@
 """Reconcile a load of the real files in /data/raw against independent readers.
 
-Deselected by default; run it with ``pytest -m full_data``. It does two full
-loads, so it takes about 18 minutes.
+Deselected by default; run it with ``pytest -m full_data``. It loads the first FCC
+file in /data/raw, in name order, then replaces it, so it takes about 12 minutes.
 """
 
 from collections.abc import Iterator
@@ -14,8 +14,9 @@ from pytest_django.plugin import DjangoDbBlocker
 
 from bdc.models import Release
 from etl.files import DEFAULT_DATA_DIR, FCC_GLOB
-from etl.load import LoadResult, clear_tables, load_served_unserved
+from etl.load import LoadResult, load_served_unserved
 from etl.tests import sources
+from etl.tests.helpers import clear_tables
 from geography.models import (
     Block,
     BlockGroup,
@@ -30,11 +31,13 @@ from served_unserved.models import Rollup, RollupLevel, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, statuses_in
 
 RAW = DEFAULT_DATA_DIR
+# The FCC files in /data/raw, in name order. The suite loads the first.
+FCC_FILES = sorted(RAW.glob(FCC_GLOB))
 pytestmark = [
     pytest.mark.full_data,
     pytest.mark.django_db,
     pytest.mark.skipif(
-        not (RAW / "tiger2020").is_dir() or not any(RAW.glob(FCC_GLOB)),
+        not (RAW / "tiger2020").is_dir() or not FCC_FILES,
         reason="the real source files are not in /data/raw",
     ),
 ]
@@ -95,7 +98,7 @@ FROM pairs
 
 @pytest.fixture(scope="module")
 def expected_fcc() -> sources.FccSummary:
-    return sources.fcc_summary(next(RAW.glob(FCC_GLOB)))
+    return sources.fcc_summary(FCC_FILES[0])
 
 
 @pytest.fixture(scope="module")
@@ -107,7 +110,7 @@ def expected_boundaries() -> dict[str, int]:
 def loaded(django_db_setup: None, django_db_blocker: DjangoDbBlocker) -> Iterator[LoadResult]:
     """Load the real files once, committed to the test database, for every test here."""
     with django_db_blocker.unblock():
-        yield load_served_unserved(RAW)
+        yield load_served_unserved(RAW, fcc_file=FCC_FILES[0])
         # Leave the tables empty, so later test modules start from nothing.
         with transaction.atomic():
             clear_tables()
@@ -233,7 +236,7 @@ def test_blocks_lie_within_their_areas(model: type[Boundary], column: str) -> No
 
 @pytest.mark.parametrize("level", list(RollupLevel))
 def test_each_key_selects_what_its_rollup_counts(loaded: LoadResult, level: str) -> None:
-    release = Release.objects.get(pk=loaded.release_id)
+    release = Release.objects.get(as_of=loaded.as_of, processed_on=loaded.processed_on)
     rollups = list(Rollup.objects.filter(release=release, level=level).order_by("code"))
     for rollup in rollups[:: SELECTION_STEPS[level]]:
         totals = (
@@ -260,8 +263,11 @@ def test_loader_counts_agree(loaded: LoadResult, expected_fcc: sources.FccSummar
     assert loaded.source.rows["served_status"] == expected_fcc.rows
 
 
-def test_loading_twice_leaves_the_same_counts(loaded: LoadResult) -> None:
-    second = load_served_unserved(RAW)
+def test_replacing_the_release_leaves_the_same_counts(loaded: LoadResult) -> None:
+    second = load_served_unserved(RAW, fcc_file=FCC_FILES[0], replace=True)
 
-    assert second.database.as_dict() == loaded.database.as_dict()
+    # The boundaries were loaded once, so the second load counts only the statuses' rows.
+    assert second.database.rows == {"served_status": loaded.database.rows["served_status"]}
+    for name in ("flag_combinations", "locations_per_county", "county_rollups", "rollup_totals"):
+        assert getattr(second.database, name) == getattr(loaded.database, name), name
     assert Release.objects.count() == 1

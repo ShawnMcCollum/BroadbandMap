@@ -45,10 +45,16 @@ def find_fcc_file(data_dir: Path) -> FccFile:
     if len(matches) > 1:
         names = ", ".join(match.name for match in matches)
         raise LoadError(
-            f"found {len(matches)} FCC Served/Unserved files in {data_dir}; keep only one: {names}"
+            f"found {len(matches)} FCC Served/Unserved files in {data_dir}; "
+            f"choose one with --fcc-file: {names}"
         )
+    return read_fcc_name(matches[0])
 
-    path = matches[0]
+
+def read_fcc_name(path: Path) -> FccFile:
+    """Read the release that the FCC Served/Unserved zip at ``path`` holds from its name."""
+    if not path.is_file():
+        raise LoadError(f"missing file {path}")
     parsed = FCC_NAME.match(path.name)
     if parsed is None:
         raise LoadError(
