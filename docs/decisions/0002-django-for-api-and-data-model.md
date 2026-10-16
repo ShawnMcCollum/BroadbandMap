@@ -3,6 +3,12 @@
 - **Status:** Accepted
 - **Date:** 2026-10-14
 
+The API contract and testing conventions, including the choice of
+`drf-spectacular` for generated OpenAPI, are recorded in
+[ADR 0015](0015-rest-api-contract-and-tests.md). That decision supersedes the
+schema-tooling assumption below; the Django, GeoDjango, and DRF architecture
+remains in effect.
+
 ## Context
 
 The API was first planned in TypeScript. It moved to Python so that one

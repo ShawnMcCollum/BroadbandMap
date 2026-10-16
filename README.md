@@ -214,6 +214,10 @@ Architectural and scope decisions are recorded in
 - [0012 — A location's block and H3 cell are stored per release](docs/decisions/0012-location-placement-per-release.md)
 - [0013 — A data load adds one release](docs/decisions/0013-release-scoped-data-loads.md)
 - [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
+- [0016 — REST API contract and tests](docs/decisions/0016-rest-api-contract-and-tests.md)
+
+The adopted REST API conventions and implementation guidance are in
+[docs/api-guidelines.md](docs/api-guidelines.md).
 - [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
@@ -234,6 +238,9 @@ This project is developed with AI assistance. The workflow follows a few rules:
 
 - **Simple tools.** Keep tools as simple as they can be, without ignoring a
   ridiculously easy solution that removes real pain.
+
+The [API guidelines](docs/api-guidelines.md) document the contract and testing
+conventions for endpoint work.
 
 Together these leave a clear trail from issue to branch to decision to code.
 
