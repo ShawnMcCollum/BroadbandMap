@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BroadbandMap — issue 71 design wireframes</title>
+    <style>
+      :root { color-scheme: light; font: 16px/1.5 system-ui, sans-serif; color: #172b3a; background: #f6f8fa; }
+      * { box-sizing: border-box; }
+      body { margin: 0; }
+      a { color: #155b83; text-underline-offset: 0.2em; }
+      a, button, input, select, textarea, summary { scroll-margin-top: 1rem; }
+      :focus-visible { outline: 3px solid #172b3a; outline-offset: 3px; }
+      .skip { position: absolute; left: 1rem; top: -5rem; background: white; padding: 0.75rem; }
+      .skip:focus { top: 0; }
+      header, main, footer { max-width: 80rem; margin: auto; padding: 1.5rem; }
+      header { padding-bottom: 0; }
+      h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 1rem; }
+      h2 { font-size: 1.5rem; line-height: 1.3; margin: 0 0 1rem; }
+      h3 { font-size: 1.125rem; margin: 0.75rem 0; }
+      p { margin: 0.75rem 0; }
+      nav, .row, .controls { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; align-items: center; }
+      nav a { display: inline-block; padding: 0.6rem 0; }
+      section { margin: 0 0 2.5rem; scroll-margin-top: 1.5rem; }
+      .screen { background: white; border: 1px solid #8996a1; padding: 1.5rem; }
+      .appnav { border-bottom: 1px solid #c0c8cf; padding-bottom: 0.75rem; margin-bottom: 1rem; }
+      .note { color: #40566b; font-size: 0.875rem; }
+      .eyebrow { font-weight: 600; letter-spacing: 0.04em; margin-bottom: 0.5rem; }
+      .controls { margin: 1rem 0; align-items: end; }
+      label { display: grid; gap: 0.3rem; min-width: 0; }
+      input, select, textarea, button { font: inherit; max-width: 100%; min-height: 2.75rem; border: 1px solid #687c8b; border-radius: 0.2rem; padding: 0.5rem 0.75rem; background: white; color: #172b3a; }
+      select { width: 100%; }
+      button { cursor: default; }
+      button:disabled { opacity: 0.6; }
+      .primary { background: #155b83; color: white; }
+      .check { display: flex; align-items: center; gap: 0.75rem; }
+      .check input { width: 1.25rem; min-height: 1.25rem; }
+      .split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(15rem, 1fr); gap: 1.5rem; margin-top: 1.5rem; }
+      .map-layout > .detail { grid-column: 2; grid-row: 1; }
+      .map-layout > div { grid-column: 1; grid-row: 1; }
+      .map { min-height: 22rem; background: #f6f8fa; border: 1px dashed #8996a1; display: grid; place-content: center; text-align: center; padding: 1rem; }
+      .map p { max-width: 28rem; }
+      .detail { border-left: 3px solid #40566b; padding-left: 1rem; }
+      .stats { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem 1rem; font-variant-numeric: tabular-nums; }
+      dt, dd { margin: 0; }
+      dd { font-weight: 600; text-align: right; }
+      .legend { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+      .legend span { display: flex; gap: 0.4rem; align-items: center; }
+      .swatch { display: inline-block; width: 1.4rem; height: 1.2rem; }
+      .b1 { background: #eff3ff; }.b2 { background: #bdd7e7; }.b3 { background: #6baed6; }.b4 { background: #3182bd; }.b5 { background: #08519c; }
+      .missing { background: repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 4px, #687c8b 4px, #687c8b 5px); }
+      .scroll { overflow-x: auto; max-width: 100%; }
+      table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+      caption { text-align: left; font-weight: 600; margin: 1rem 0 0.5rem; }
+      th, td { text-align: left; padding: 0.75rem 0.5rem; border-bottom: 1px solid #c0c8cf; vertical-align: top; }
+      th { font-weight: 600; }
+      .number { text-align: right; }
+      .id { white-space: nowrap; }
+      .state { border-left: 3px solid #8996a1; padding: 0.4rem 1rem; margin: 1rem 0; }
+      details { margin-top: 1rem; }
+      summary { cursor: pointer; padding: 0.6rem 0; font-weight: 600; }
+      .form { display: grid; gap: 1rem; }
+      .form.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .span { grid-column: 1 / -1; }
+      .reading { max-width: 48rem; }
+      textarea { width: 100%; resize: vertical; }
+      .chart { margin: 1rem 0; }
+      .barrow { display: grid; grid-template-columns: 6rem minmax(0, 1fr) 4rem; gap: 0.75rem; align-items: center; margin: 0.75rem 0; }
+      .track { background: #f6f8fa; height: 1.25rem; }
+      .bar { background: #3182bd; height: 100%; }
+      .error { color: #a82020; }
+      footer { border-top: 1px solid #c0c8cf; }
+      @media (max-width: 64rem) { .split { grid-template-columns: minmax(0, 3fr) minmax(14rem, 2fr); } }
+      @media (max-width: 48rem) {
+        header, main, footer { padding: 1rem; }
+        .screen { padding: 1rem; }
+        .split, .form.two { grid-template-columns: minmax(0, 1fr); }
+        .controls { display: grid; grid-template-columns: minmax(0, 1fr); }
+        .detail { border-left: 0; border-top: 3px solid #40566b; padding: 1rem 0 0; }
+        .map-layout > .detail { grid-column: 1; grid-row: 1; }
+        .map-layout > div { grid-column: 1; grid-row: 2; }
+        .map { min-height: 20rem; }
+        .stats { gap: 0.5rem; }
+        .barrow { grid-template-columns: 5rem minmax(0, 1fr) 3rem; gap: 0.4rem; }
+      }
+      @media print { .screen { break-inside: avoid; } details > * { display: block; } nav { display: none; } }
+    </style>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to wireframes</a>
+    <header>
+      <p class="eyebrow">ISSUE #71 · DESIGN REVIEW</p>
+      <h1>One dataset. Two ways to explore it.</h1>
+      <p>Low-fidelity layout proposals. All counts below are synthetic examples; the map area is a schematic placeholder. Controls illustrate placement and do not fetch or save data.</p>
+      <p class="note">Each screen adapts to desktop and narrow widths. Resize to 390px or 320px to inspect the stacked layouts. Expand state examples for empty/error alternatives.</p>
+      <nav aria-label="Wireframe workflows">
+        <a href="#map">1. County map</a><a href="#county">2. County detail</a><a href="#summary">3. Analyst summaries</a><a href="#locations">4. Location pages</a><a href="#settings">5. AI settings</a><a href="#ask">6. Ask (stub)</a>
+      </nav>
+    </header>
+    <main id="main">
+      <section id="map" aria-labelledby="map-heading">
+        <p class="eyebrow">1 · REACT · #73</p>
+        <div class="screen">
+          <nav class="appnav" aria-label="Map navigation sketch"><strong>BroadbandMap</strong><span>Map</span><span>Analyst dashboard ↗</span><span>Ask (stub)</span><span>AI settings</span></nav>
+          <h2 id="map-heading">Ohio broadband availability</h2>
+          <p>Served / Not served (100/20 Mbps). Explore a county’s counts behind its served share.</p>
+          <div class="controls">
+            <label>Data release<select><option>December 2025 · processed 2026-09-29</option></select></label>
+            <label>State<input value="Ohio (39)" readonly></label>
+            <label>Technology flag<select><option>Wired</option><option>Any technology</option><option>Terrestrial</option></select></label>
+            <label>County<select><option>All counties</option><option>Franklin — 39049</option></select></label>
+          </div>
+          <p class="note">Data period: December 2025 (2025-12-31) · Processed: 2026-09-29 · Loaded states: Ohio.</p>
+          <p class="note">Analyst dashboard opens the other app with default filters.</p>
+          <div class="split map-layout">
+            <aside class="detail"><h3>Select a county</h3><p>Use the county selector, a table’s Select button, or click the map.</p><p>County details appear here. Hover only previews; it does not replace your selection.</p></aside>
+            <div>
+              <div class="map" role="group" aria-label="Schematic county map placeholder; real county polygons will be rendered in issue 73">
+                <strong>Ohio county choropleth</strong><p>88 county boundaries<br>Sequential served-share fill<br>Hover preview · Click to select</p>
+                <div class="row"><button type="button" aria-label="Zoom in, layout example">+</button><button type="button" aria-label="Zoom out, layout example">−</button><button type="button">Fit Ohio</button></div>
+                <p class="note">FCC National Broadband Map · Census TIGER/Line 2020 · MapLibre</p>
+              </div>
+              <h3>Served share</h3>
+              <div class="legend" aria-label="Proposed percentage bins">
+                <span><i class="swatch b1" aria-hidden="true"></i>0–&lt;20%</span><span><i class="swatch b2" aria-hidden="true"></i>20–&lt;40%</span><span><i class="swatch b3" aria-hidden="true"></i>40–&lt;60%</span><span><i class="swatch b4" aria-hidden="true"></i>60–&lt;80%</span><span><i class="swatch b5" aria-hidden="true"></i>80–100%</span><span><i class="swatch missing" aria-hidden="true"></i>No summary observation</span>
+              </div>
+            </div>
+          </div>
+          <div class="scroll" role="region" aria-label="County table alternative" tabindex="0"><table><caption>County table — illustrative row</caption><thead><tr><th scope="col">County</th><th scope="col">Served share</th><th scope="col">Locations</th><th scope="col">Select</th></tr></thead><tbody><tr><th scope="row">Franklin (39049)</th><td>80.0%</td><td>1,000</td><td><button type="button">Select Franklin</button></td></tr></tbody></table></div>
+          <details><summary>Loading, no-data, and fallback examples</summary><div class="state">Loading county summaries… Controls show the pending selection; thematic fill and counts stay neutral.</div><div class="state">No data releases are loaded. Follow the README data-load instructions, then refresh. <button type="button">Refresh releases</button></div><div class="state">Ohio is not loaded for this release. Choose another release.</div><div class="state">Interactive map unavailable. Use the county selector and table. Geometry errors do not erase available summary rows.</div></details>
+          <p class="note">Diagnostics remains a secondary footer link.</p>
+        </div>
+      </section>
+      <section id="county" aria-labelledby="county-heading">
+        <p class="eyebrow">2 · REACT · #73</p>
+        <div class="screen">
+          <h2 id="county-heading">A persistent county selection</h2>
+          <p class="note">Same exploration controls and provenance as the map. Detail moves above the map on narrow screens.</p>
+          <label class="reading">County<select><option>Franklin — 39049</option><option>All counties</option></select></label>
+          <div class="split map-layout">
+            <aside class="detail"><h3>Franklin County</h3><p>GEOID 39049 · Wired</p><dl class="stats"><dt>Served share</dt><dd>80.0%</dd><dt>Locations</dt><dd>1,000</dd><dt>Served</dt><dd>800</dd><dt>Not served</dt><dd>200</dd></dl><p class="note">Synthetic example · 100/20 Mbps<br>As of 2025-12-31<br>Processed 2026-09-29<br>Census boundary vintage 2020</p></aside>
+            <div class="map" role="img" aria-label="Schematic placeholder for highlighted Franklin county"><strong>Selected county outline</strong><p>Hovering another county shows a temporary preview. Franklin remains selected.</p></div>
+          </div>
+          <details><summary>Missing observation and unavailable summary examples</summary><div class="state">No summary observation. Checking this county’s coverage… No percentage is assigned.</div><div class="state">No locations were observed in this county for this release.</div><div class="state">This county is outside the loaded coverage of this release.</div><div class="state">County summaries are unavailable. Try refreshing. <button type="button">Refresh summaries</button></div><div class="state">Could not load county details. Retry this read. Request ID: example-id. <button type="button">Retry detail</button></div></details>
+        </div>
+      </section>
+      <section id="summary" aria-labelledby="summary-heading">
+        <p class="eyebrow">3 · STREAMLIT · #74</p>
+        <div class="screen">
+          <nav class="appnav" aria-label="Dashboard navigation sketch"><strong>BroadbandMap / Analyst dashboard</strong><span>Map ↗</span><span>Ask (stub) ↗</span></nav>
+          <h2 id="summary-heading">Compare Ohio counties</h2>
+          <div class="controls"><label>Data release<select><option>December 2025 · processed 2026-09-29</option></select></label><label>Technology flag<select><option>Wired</option><option>Any technology</option><option>Terrestrial</option></select></label><button type="button">Refresh summaries</button></div>
+          <p class="note">Ohio · Loaded states: Ohio · 100/20 Mbps · Map opens the other app with default filters.</p>
+          <h3>Observed county totals — synthetic two-county example</h3>
+          <p><strong>1,200 of 2,000 locations served · 60.0%</strong></p>
+          <div class="chart" role="img" aria-label="Synthetic county served shares: Franklin 80 percent, Adams 40 percent; exact counts are in the table below">
+            <p>Served share (%) · 0 to 100</p><div class="barrow"><span>Franklin</span><div class="track"><div class="bar" style="width:80%"></div></div><span>80.0%</span></div><div class="barrow"><span>Adams</span><div class="track"><div class="bar" style="width:40%"></div></div><span>40.0%</span></div>
+          </div>
+          <div class="scroll" role="region" aria-label="County summaries" tabindex="0"><table><caption>Same selection, exact counts</caption><thead><tr><th scope="col">County / GEOID</th><th scope="col" class="number">Locations</th><th scope="col" class="number">Served</th><th scope="col" class="number">Not served</th><th scope="col" class="number">Served share</th></tr></thead><tbody><tr><th scope="row">Adams / 39001</th><td class="number">1,000</td><td class="number">400</td><td class="number">600</td><td class="number">40.0%</td></tr><tr><th scope="row">Franklin / 39049</th><td class="number">1,000</td><td class="number">800</td><td class="number">200</td><td class="number">80.0%</td></tr></tbody></table></div>
+          <div class="controls"><button type="button">Download summary CSV</button><label>County<select><option>Franklin — 39049</option><option>Adams — 39001</option></select></label><button type="button" class="primary">View locations</button></div>
+          <p class="note">Source: FCC National Broadband Map · as of 2025-12-31 · processed 2026-09-29 · Census TIGER/Line 2020 boundaries.</p>
+          <details><summary>Incomplete collection and network failure examples</summary><div class="state">Loading county summary pages… Totals and export remain unavailable. <button type="button" disabled>Download summary CSV</button></div><div class="state">Could not load all county summaries. No partial statewide total or export is shown. <button type="button">Retry summaries</button></div><div class="state">Could not reach the API. Check the stack diagnostics or try again. No raw server response is shown.</div></details>
+        </div>
+      </section>
+      <section id="locations" aria-labelledby="locations-heading">
+        <p class="eyebrow">4 · STREAMLIT · #75</p>
+        <div class="screen">
+          <p>← Back to county summaries</p><h2 id="locations-heading">Locations in Franklin County</h2>
+          <p>GEOID 39049 · Wired · as of 2025-12-31 · processed 2026-09-29</p>
+          <div class="controls"><label>Selected-flag status<select><option>All locations</option><option>Served</option><option>Not served</option></select></label><label>Rows per request<select><option>100</option><option>250</option><option>500</option><option>1,000</option></select></label></div>
+          <div class="scroll" role="region" aria-label="Location page, horizontally scrollable" tabindex="0"><table><caption>Illustrative current response · IDs remain text</caption><thead><tr><th scope="col">Location ID</th><th scope="col">Block GEOID</th><th scope="col">H3 res-8</th><th scope="col">Any 100/20</th><th scope="col">Wired 100/20</th><th scope="col">Terrestrial 100/20</th></tr></thead><tbody><tr><td class="id">1000000001</td><td class="id">390490001001001</td><td class="id">882a9b8c01fffff</td><td>Yes</td><td>Yes</td><td>Yes</td></tr><tr><td class="id">1000000002</td><td class="id">390490001001001</td><td class="id">882a9b8c01fffff</td><td>Yes</td><td>No</td><td>Yes</td></tr></tbody></table></div>
+          <p>2 rows shown in this illustrative response. No total count or page count is inferred.</p><div class="row"><button type="button" disabled>Previous</button><button type="button">Next</button></div>
+          <p class="note">FCC National Broadband Map · loaded states: Ohio · Census boundary vintage 2020 · 100/20 Mbps.</p>
+          <details><summary>Filter-empty, coverage, and restart examples</summary><div class="state">No locations match this status filter. This county has observations; change the status filter.</div><div class="state">No locations were observed in this county for this release.</div><div class="state">The data changed. Restart locations to read a fresh page. Old rows and navigation are cleared. <button type="button">Restart locations</button></div><div class="state">This location link is no longer valid. <button type="button">Restart locations</button></div><div class="state">The selected release is no longer available. <button type="button">Reload releases</button></div></details>
+        </div>
+      </section>
+      <section id="settings" aria-labelledby="settings-heading">
+        <p class="eyebrow">5 · REACT · #76</p>
+        <div class="screen">
+          <nav class="appnav" aria-label="Settings navigation sketch"><strong>BroadbandMap</strong><span>Map</span><span>Analyst dashboard ↗</span><span>Ask (stub)</span><span>AI settings</span></nav>
+          <h2 id="settings-heading">AI settings — application administrators</h2>
+          <p>Installation-wide configuration. This is a stub: saved provider/model identifiers are unverified and no provider is contacted.</p>
+          <div class="split">
+            <div class="form two">
+              <label class="check span"><input type="checkbox"><span>Enable the configured stub</span></label>
+              <label>Provider identifier<input placeholder="provider-id" readonly><span class="note">Lowercase ID · maximum 64 characters</span></label>
+              <label>Model identifier<input placeholder="model-id" readonly><span class="note">Unverified · maximum 200 characters</span></label>
+              <label>Timeout (seconds)<input type="number" value="30" min="1" max="120" readonly><span class="note">1–120 · reserved for future provider calls</span></label>
+              <label>Output limit (tokens)<input type="number" value="1024" min="1" max="8192" readonly><span class="note">1–8,192 · future-provider setting</span></label>
+              <label class="span">Replacement provider key<input type="password" placeholder="Blank preserves the saved key" disabled aria-describedby="key-help"><span class="note" id="key-help">Never prefilled. Blank preserves the saved key; replacement is 1–4,096 trimmed characters. Cleared after successful save or leaving settings.</span></label>
+              <div class="span row"><button type="button" class="primary">Save settings</button><button type="button">Reload saved settings</button><button type="button">Sign out</button></div>
+            </div>
+            <aside class="detail"><h3>Saved nonsecret state</h3><dl class="stats"><dt>Enabled</dt><dd>No</dd><dt>Key configured</dt><dd>Yes</dd><dt>Key available</dt><dd>Yes</dd><dt>Provider verified</dt><dd>No</dd></dl><p class="note">Last updated: example timestamp<br>Shown only after authorized read</p></aside>
+          </div>
+          <details><summary>Remove key — inline confirmation</summary><p>Remove the saved key and disable the stub? Unrelated unsaved edits will not be saved.</p><div class="row"><button type="button">Cancel</button><button type="button">Remove key and disable</button></div></details>
+          <details><summary>Sign-in, validation, saving, and credential failure examples</summary><div class="state">Sign in with an authorized staff account, or ask an application administrator for access. Configuration is hidden. <button type="button">Sign in through Django</button></div><div class="state"><strong class="error">Settings were not saved.</strong> Replace or explicitly remove the key when changing provider. Error is also associated with the key field.</div><div class="state">Saving settings… <button type="button" disabled>Saving…</button></div><div class="state">Save could not be confirmed. Reload saved settings before retrying.</div><div class="state">Session or CSRF check failed. Sign in or reload saved settings; no silent retry.</div><div class="state">Key configured: Yes. Key available: No. Explicitly remove the saved key, then provide a replacement; removal disables the stub.</div></details>
+          <p class="note">Sign-in and POST sign-out return to AI settings through the web origin. The server checks active staff status and operation permission.</p>
+        </div>
+      </section>
+      <section id="ask" aria-labelledby="ask-heading">
+        <p class="eyebrow">6 · REACT · #77</p>
+        <div class="screen">
+          <nav class="appnav" aria-label="Question navigation sketch"><strong>BroadbandMap</strong><span>Map</span><span>Analyst dashboard ↗</span><span>Ask (stub)</span><span>AI settings</span></nav>
+          <div class="reading">
+            <h2 id="ask-heading">Ask (stub)</h2>
+            <p><strong>Demonstration stub.</strong> No provider is contacted and no broadband data is queried. Map filters are not sent.</p>
+            <label>Question<textarea rows="4" readonly aria-describedby="question-help">How many locations are served?</textarea></label><p class="note" id="question-help">Up to 2,000 characters after trimming. Questions and answers remain only in this page’s transient state.</p><button type="button" class="primary">Submit question</button>
+            <h3>Submitted question</h3><p>How many locations are served?</p><h3>Stub answer</h3><p>This is a natural-language query stub. No broadband data was queried and no external provider was contacted.</p>
+            <details><summary>Availability, pending, and validation examples</summary><div class="state">Checking stub availability…</div><div class="state">The stub is disabled. Ask an application administrator to enable it in AI settings. <button type="button" disabled>Submit question</button></div><div class="state">Could not check stub availability. <button type="button">Retry status</button></div><div class="state">Submitting question… <button type="button" disabled>Submitting…</button></div><div class="state"><strong class="error">Enter a nonblank question of at most 2,000 characters.</strong> Input remains available for correction.</div><div class="state">The stub was disabled before submission completed. Your question is retained. Ask an application administrator.</div><div class="state">Saved credentials are unavailable. An application administrator must recover configuration. No automatic resubmission.</div></details>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer><p>Design proposal, not implementation evidence. Review the companion frontend-design.md and frontend-guidelines.md for exact state, data, authentication, and verification rules.</p><a href="#main">Back to wireframes</a></footer>
+  </body>
+</html>

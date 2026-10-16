@@ -402,6 +402,14 @@ Architectural and scope decisions are recorded in
 The adopted REST API conventions and implementation guidance are in
 [docs/api-guidelines.md](docs/api-guidelines.md).
 
+The proposed frontend layouts and interaction conventions for issue #71 are in
+the [frontend design](docs/plans/frontend-design.md), with
+[responsive wireframes](docs/plans/frontend-wireframes.html) that open directly
+in a browser. The [frontend guidelines](docs/frontend-guidelines.md) collect
+shared labels, selection/error behavior, accessibility, and implementation
+boundaries. These are design-review documents; the current client pages remain
+stack checks until the following frontend issues are implemented.
+
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
 logged in [docs/journal.md](docs/journal.md).
