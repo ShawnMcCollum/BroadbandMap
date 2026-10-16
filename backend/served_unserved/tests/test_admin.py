@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 import pytest
@@ -7,7 +8,9 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from bdc.models import Release
+from core.admin import CappedCountPaginator
 from geography.models import Block, State
+from served_unserved.admin import ServedStatusAdmin
 from served_unserved.models import Rollup, ServedStatus
 
 CHANGELIST = "admin:served_unserved_servedstatus_changelist"
@@ -29,6 +32,140 @@ def test_changelist_shows_the_block_and_cell(
     assert response.status_code == 200
     assert "390490001101000" in response.text
     assert "882a91ae3bfffff" in response.text
+
+
+def add_status(release: Release, block: Block, location_id: int) -> ServedStatus:
+    """A status of the location in the release, served by every technology."""
+    return ServedStatus.objects.create(
+        release=release,
+        location_id=location_id,
+        block=block,
+        h3_res8="882a91ae3bfffff",
+        any_100_20=True,
+        wired_100_20=True,
+        terrestrial_100_20=True,
+    )
+
+
+def status_queries(queries: CaptureQueriesContext) -> list[str]:
+    return [
+        query["sql"]
+        for query in queries.captured_queries
+        if '"served_unserved_servedstatus"' in query["sql"]
+    ]
+
+
+# Release IDs follow load order, not date order: December 2026 is added last but is the newest.
+# The list follows the IDs, the order of the unique (release, location_id) index (ADR 0022).
+def test_changelist_lists_by_release_id_then_location_id(
+    admin_client: Client, served_status: ServedStatus, j25_status: ServedStatus, block: Block
+) -> None:
+    earlier = add_status(served_status.release, block, 1000000001)
+    d26 = Release.objects.create(
+        filing_period="D26", as_of=date(2026, 12, 31), processed_on=date(2027, 9, 29)
+    )
+    newest = add_status(d26, block, 1000000001)
+
+    response = admin_client.get(reverse(CHANGELIST))
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [earlier, served_status, j25_status, newest]
+
+
+def test_changelist_page_is_ordered_like_the_unique_index(
+    admin_client: Client, served_status: ServedStatus
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(reverse(CHANGELIST))
+
+    page = next(sql for sql in status_queries(queries) if "ORDER BY" in sql)
+    order = re.search(r"ORDER BY (.*?)(?: LIMIT \d+)?$", page)
+    assert order is not None
+    assert order.group(1) == (
+        '"served_unserved_servedstatus"."release_id" ASC, '
+        '"served_unserved_servedstatus"."location_id" ASC'
+    )
+
+
+# No column sorts the list, since no index serves another order (ADR 0022).
+def test_changelist_columns_do_not_sort(admin_client: Client, served_status: ServedStatus) -> None:
+    response = admin_client.get(reverse(CHANGELIST))
+
+    assert response.status_code == 200
+    assert 'href="?o=' not in response.text
+
+
+# The count stops after the cap, and no filter counts its choices, even when asked to.
+@pytest.mark.parametrize("params", [{}, {"_facets": ""}])
+def test_changelist_reads_the_statuses_twice(
+    admin_client: Client, served_status: ServedStatus, params: dict[str, str]
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        response = admin_client.get(reverse(CHANGELIST), params)
+
+    assert response.status_code == 200
+    count, page = status_queries(queries)
+    assert count.startswith("SELECT COUNT(*) FROM (SELECT ")
+    assert count.endswith(" LIMIT 10001) subquery")
+    assert page.startswith('SELECT "served_unserved_servedstatus"."id", ')
+    assert "Show counts" not in response.text
+
+
+@pytest.fixture
+def capped(monkeypatch: pytest.MonkeyPatch, served_status: ServedStatus, block: Block) -> None:
+    """Three statuses, a cap of two and one status per page."""
+    monkeypatch.setattr(CappedCountPaginator, "cap", 2)
+    monkeypatch.setattr(ServedStatusAdmin, "list_per_page", 1)
+    for location_id in (1000000001, 1000000002):
+        add_status(served_status.release, block, location_id)
+
+
+@pytest.mark.usefixtures("capped")
+def test_count_stops_at_the_cap(admin_client: Client) -> None:
+    response = admin_client.get(reverse(CHANGELIST))
+
+    assert response.status_code == 200
+    assert response.context["cl"].result_count == 2
+    assert response.context["cl"].paginator.capped
+    assert "More than 2 served statuses" in response.text
+    assert "More than 2 results" in response.text
+
+
+@pytest.mark.usefixtures("capped")
+def test_pages_up_to_the_cap_are_offered(admin_client: Client) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"p": "2"})
+
+    assert response.status_code == 200
+    assert [status.location_id for status in response.context["cl"].result_list] == [1000000002]
+
+
+@pytest.mark.usefixtures("capped")
+def test_pages_beyond_the_cap_are_refused(admin_client: Client) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"p": "3"})
+
+    assert response.status_code == 302
+    assert response["Location"].endswith("?e=1")
+
+
+def test_count_below_the_cap_is_exact(
+    admin_client: Client,
+    served_status: ServedStatus,
+    block: Block,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(CappedCountPaginator, "cap", 3)
+    monkeypatch.setattr(ServedStatusAdmin, "list_per_page", 1)
+    for location_id in (1000000001, 1000000002):
+        add_status(served_status.release, block, location_id)
+
+    response = admin_client.get(reverse(CHANGELIST))
+
+    assert response.status_code == 200
+    assert response.context["cl"].result_count == 3
+    assert not response.context["cl"].paginator.capped
+    assert "3 served statuses" in response.text
+    assert "3 results" in response.text
+    assert "More than" not in response.text
 
 
 def test_change_view_opens(admin_client: Client, served_status: ServedStatus) -> None:

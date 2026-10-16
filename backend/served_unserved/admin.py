@@ -3,7 +3,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest
 
 from bdc.models import Release
-from core.admin import ReadOnlyModelAdmin
+from core.admin import CappedCountPaginator, ReadOnlyModelAdmin
 from served_unserved.models import Rollup, ServedStatus
 
 
@@ -21,6 +21,14 @@ class ServedStatusAdmin(ReadOnlyModelAdmin):
     )
     list_filter = ("release", "any_100_20", "wired_100_20", "terrestrial_100_20")
     list_select_related = ("release",)
+    # The statuses are listed by release ID, then location ID (ServedStatus.Meta.ordering), the
+    # order of the unique (release, location_id) index. No column sorts the list, since no index
+    # serves any other order (ADR 0022).
+    sortable_by = ()
+    # The count stops after CappedCountPaginator.cap statuses, and the filters do not count their
+    # choices: either would read every status in the table or the release (ADR 0022).
+    paginator = CappedCountPaginator
+    show_facets = admin.ShowFacets.NEVER
     # search_fields makes the search box render; get_search_results does the search.
     search_fields = ("location_id",)
     search_help_text = "Location ID"

@@ -544,6 +544,7 @@ LOADER_INDEXES = {
         "served_unserved_unique_location_per_release",
         "servedstatus_release_block",
         "servedstatus_release_h3",
+        "servedstatus_not_served",
     },
     "served_unserved_rollup": {
         "served_unserved_rollup_pkey",

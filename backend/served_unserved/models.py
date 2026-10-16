@@ -49,7 +49,10 @@ class ServedStatus(models.Model):
     class Meta:
         verbose_name = "served status"
         verbose_name_plural = "served statuses"
-        ordering = ["release", "location_id"]
+        # By release ID, not by the release's dates, which would join every status to its release
+        # and sort them all. The unique (release, location_id) index serves this order, so a page
+        # of the admin reads one page of the index (ADR 0022).
+        ordering = ["release_id", "location_id"]
         constraints = [
             models.UniqueConstraint(
                 fields=["release", "location_id"],
@@ -77,6 +80,13 @@ class ServedStatus(models.Model):
                 name="servedstatus_release_block",
             ),
             models.Index(fields=["release", "h3_res8"], name="servedstatus_release_h3"),
+            # The few locations with no 100/20 Mbps service by any technology, for the admin's
+            # filter on them: 132 of the 4.5 million in Ohio's December 2025 release (ADR 0022).
+            models.Index(
+                fields=["release", "location_id"],
+                condition=models.Q(any_100_20=False),
+                name="servedstatus_not_served",
+            ),
         ]
 
     def __str__(self) -> str:
