@@ -104,6 +104,17 @@ These are individual measurements, with differing cache state, not guarantees.
 Deep direct-order pages can be faster than an explicit sort; the deliberate
 tradeoff is avoiding the much worse first-page and sparse-filter scans.
 
+A separate fresh test-database load reconciled 4,542,350 locations and verified
+the county's first/deep API results and flags against the raw FCC CSV. The cold
+first HTTP request took 1,003 ms; subsequent county first pages took 47–117 ms,
+and deep pages 46–77 ms with 10 SQL statements per request and no COUNT/OFFSET.
+The fresh statistics chose a location-ID range scan for deep county pages,
+followed by filtering and sorting (32–45 ms SQL). Deep place and subdivision
+plans used a hash join and took 164 and 156 ms respectively. This run also
+profiled first/deep pages at every other level and passed in 8 minutes 7 seconds.
+The different cache state and plans reinforce the need to retain reproducible
+profiling rather than treat one query plan or timing as a permanent guarantee.
+
 The sort bounds returned rows and sort working storage, not every geography's
 candidate scan. Query cost still depends on area size, filtering and available
 statistics. Re-profile before extending the geography model or data scale;

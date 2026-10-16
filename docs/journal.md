@@ -29,6 +29,10 @@ Newest entries first.
   the area's candidates for the sort, including on deep pages; the reasoning,
   plans and limitations are recorded in
   [ADR 0019](decisions/0019-location-cursors.md).
+- Validation passed 590 fast backend tests plus the dedicated full-Ohio source
+  reconciliation and profiling test (4,542,350 locations). The running API also
+  served an initial filtered page and its next link over HTTP. Full-data timings,
+  including the cold first request, are recorded in ADR 0019.
 
 ---
 
