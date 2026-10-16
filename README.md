@@ -210,11 +210,12 @@ docker compose run --rm backend python manage.py delete_release --as-of 2025-12-
 It deletes that state's statuses and rollups in the release, and changes no
 other state or release. The state's census boundaries stay loaded, so loading
 its file again does not reload them. Deleting the release's last state also
-deletes the release; the confirmation question says so first. If the release
-does not hold the state, the command lists the states it holds. As for a whole
-release, the deletion is one transaction, no query waits for it, and the
-tables it changed are then vacuumed and analyzed. For Ohio, it takes about
-15 seconds.
+deletes the release; the confirmation question says so first. If the state
+becomes the release's last while the question is open, nothing is deleted,
+and the command asks you to run it again. If the release does not hold the
+state, the command lists the states it holds. As for a whole release, the
+deletion is one transaction, no query waits for it, and the tables it changed
+are then vacuumed and analyzed. For Ohio, it takes about 15 seconds.
 
 ### API foundation
 

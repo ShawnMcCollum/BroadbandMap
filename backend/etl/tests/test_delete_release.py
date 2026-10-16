@@ -476,7 +476,7 @@ def test_release_deleted_while_asking_about_a_state(
         call_command("delete_release", *DECEMBER, "--state", "39")
 
 
-def test_last_state_is_decided_after_the_answer(
+def test_state_that_became_the_last_is_not_deleted_without_a_warning(
     served_status: ServedStatus, wv_block: Block, monkeypatch: MonkeyPatch
 ) -> None:
     wv = add_wv_status(served_status.release, wv_block)
@@ -488,15 +488,34 @@ def test_last_state_is_decided_after_the_answer(
         return "yes"
 
     monkeypatch.setattr("builtins.input", delete_then_answer)
+
+    with pytest.raises(CommandError) as refused:
+        call_command("delete_release", *DECEMBER, "--state", "39")
+
+    assert "only state" not in prompts[0]
+    assert str(refused.value) == (
+        "Ohio became the only state of December 2025 (processed 2026-09-29) while the question "
+        "was open, so nothing was deleted; run the command again to delete it with the release"
+    )
+    assert list(ServedStatus.objects.values_list("location_id", flat=True)) == [1000338835]
+    assert Release.objects.count() == 1
+
+    # Run again, the question warns, and the release goes with its last state.
+    def answer_yes(prompt: str) -> str:
+        prompts.append(prompt)
+        return "yes"
+
+    monkeypatch.setattr("builtins.input", answer_yes)
     out = StringIO()
 
     call_command("delete_release", *DECEMBER, "--state", "39", stdout=out)
 
-    assert "only state" not in prompts[0]
-    assert re.fullmatch(
-        r"Deleted Ohio from December 2025 \(processed 2026-09-29\): 1 statuses and 0 rollups "
-        r"in \d+ s\. It was the release's only state, so the release was deleted too\.\n",
-        out.getvalue(),
+    assert prompts[1].endswith(
+        "It is the release's only state, so the release is deleted too. "
+        "Type 'yes' to continue, or 'no' to cancel: "
+    )
+    assert out.getvalue().endswith(
+        "It was the release's only state, so the release was deleted too.\n"
     )
     assert Release.objects.count() == 0
 

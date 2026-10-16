@@ -112,8 +112,10 @@ class Command(BaseCommand):
         state = next((state for state in states if state.geoid == state_fips), None)
         if state is None:
             raise CommandError(not_held(release, state_fips, states))
+        # Whether the question says the release goes too; checked again under the lock.
+        warned = len(states) == 1
         question = f"Delete {state.name} from {release}, with its statuses and rollups there?"
-        if len(states) == 1:
+        if warned:
             question += " It is the release's only state, so the release is deleted too."
         if interactive and not self.confirm(question):
             return
@@ -136,6 +138,14 @@ class Command(BaseCommand):
                 # Decided before deleting: once the state's statuses are deleted, finding whether
                 # the release has any left reads past every deleted row's index entry.
                 last = held == [state_fips]
+                if last and interactive and not warned:
+                    # The answer did not cover deleting the release. Asking again here would
+                    # hold the write lock while waiting for the answer.
+                    raise CommandError(
+                        f"{state.name} became the only state of {release} while the question "
+                        "was open, so nothing was deleted; run the command again to delete it "
+                        "with the release"
+                    )
                 if last:
                     _, deleted = Release.objects.filter(pk=current.pk).delete()
                     statuses = deleted.get(ServedStatus._meta.label, 0)
