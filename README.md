@@ -198,7 +198,7 @@ transaction, and changes no other release. If no release has those dates, it
 lists the dates of the releases that are loaded. Readers see the release until
 the deletion commits, and no query waits for it. The command then vacuums and
 analyzes the tables it changed, so the next data load reuses their space. For
-Ohio, it takes about ten seconds.
+Ohio, it takes about 15 seconds.
 
 To delete one state from a release, such as a state loaded from the wrong
 file, add `--state` with its two-digit FIPS code:
