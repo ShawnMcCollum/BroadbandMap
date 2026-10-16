@@ -30,6 +30,8 @@ class Problem(serializers.Serializer[Any]):
             "throttled",
             "internal_error",
             "service_unavailable",
+            "natural_language_disabled",
+            "ai_credentials_unavailable",
             "dataset_changed",
             "http_error",
         )

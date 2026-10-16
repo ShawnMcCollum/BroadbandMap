@@ -36,6 +36,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data:/data
+      - ai_secrets:/run/broadbandmap-secrets
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -92,3 +93,4 @@ services:
 
 volumes:
   pgdata:
+  ai_secrets:

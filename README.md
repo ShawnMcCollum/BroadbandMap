@@ -279,19 +279,65 @@ requires a restart. A failed write preserves a traversal. See
 [ADR 0019](docs/decisions/0019-location-cursors.md).
 
 The generated OpenAPI 3.0.3 document is available at
-<http://localhost:8000/api/schema/>. It describes these four implemented
-resources, including validation and errors. The health endpoint
+<http://localhost:8000/api/schema/>. It describes the implemented data and
+natural-language resources, including validation and errors. The health endpoint
 keeps its separate operational contract.
 
 API views deny access until they explicitly choose a permission policy.
-Public data views allow anonymous reads and expose no write methods. Future
-operations require an active staff user with the declared operation
+Public data views allow anonymous reads and expose no write methods. AI
+configuration requires an active staff user with the declared operation
 permissions, using session authentication and CSRF protection.
 
 API errors use Problem Details JSON, with stable codes, structured validation
 errors, and a request identifier for diagnosing unexpected failures. The
 [API guidelines](docs/api-guidelines.md) explain the shared modules, error
 contract, query validation, and how to add an endpoint.
+
+### Natural-language query stub and AI settings
+
+The backend provides a natural-language stub, with installation-wide AI settings
+managed by an application administrator. It makes no provider requests or
+broadband queries. Every answer says it is a stub; saved provider/model identifiers
+have not been verified against a provider.
+
+| Route | Access and purpose |
+|---|---|
+| `GET /api/v1/natural-language/` | Public enabled/disabled status and guidance |
+| `GET /api/v1/natural-language/configuration/` | Authorized admin reads saved nonsecret settings and obtains a CSRF cookie |
+| `PATCH /api/v1/natural-language/configuration/` | Authorized admin saves settings or replaces/removes the provider key |
+| `POST /api/v1/natural-language/query/` | Public stub processes `{"question": "How many locations are served?"}` |
+
+Configuration requires an active staff account with
+`natural_language.manage_ai_configuration`; active staff superusers also qualify.
+Account and permission assignment use the existing Django admin interface at
+<http://localhost:8000/admin/>. Configuration requests use the administrator's
+session; PATCH also requires a valid CSRF token.
+
+Settings include provider/model identifiers, enable state, timeout (1–120 seconds,
+default 30), and output limit (1–8,192 tokens, default 1,024). The provider key is
+write-only: omit it to retain the saved key, supply a replacement to change it,
+or use `clear_api_key: true` to remove it and disable the feature. Changing
+provider requires replacement or explicit clearing. API responses show only
+whether a key is configured and available, never the key itself.
+
+Settings persist in PostgreSQL and apply on the next request. The application
+automatically manages separate encryption material in the backend-only
+`ai_secrets` Docker volume; configuring AI requires no provider-key `.env`
+setting or container restart. Preserve both the database and secret volume in
+deployment backups. Named volumes survive container recreation, but are not
+backups; `docker compose down -v` destroys this installation state too.
+
+If encryption material is lost or corrupted, AI stays unavailable rather than
+silently discarding the saved credential. An administrator can explicitly clear
+and replace the provider key to recover; deployment operators can instead
+restore matching database and secret-volume backups.
+
+The web frontend's administrator settings screen and question panel are planned
+in [#32](https://github.com/ShawnMcCollum/BroadbandMap/issues/32); this change
+provides their backend contract. The completed frontend must let application
+administrators configure AI through normal sign-in without terminal access.
+Provider integration and access/cost policies for paid calls remain future work.
+See [ADR 0020](docs/decisions/0020-natural-language-query-stub.md).
 
 ### Checks
 
@@ -350,6 +396,7 @@ Architectural and scope decisions are recorded in
 - [0017 — National releases loaded by state](docs/decisions/0017-national-releases-loaded-by-state.md)
 - [0018 — County GeoJSON for initial map output](docs/decisions/0018-county-geojson-map-output.md)
 - [0019 — Location drill-down with release-wide cursor generations](docs/decisions/0019-location-cursors.md)
+- [0020 — Natural-language stub with persistent application configuration](docs/decisions/0020-natural-language-query-stub.md)
 - [0017 — A release is national, and a data load adds one state](docs/decisions/0017-national-releases-loaded-by-state.md)
 
 The adopted REST API conventions and implementation guidance are in

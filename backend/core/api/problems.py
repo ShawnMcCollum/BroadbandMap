@@ -35,6 +35,21 @@ class DatasetChanged(APIException):
     default_code = "dataset_changed"
 
 
+class NaturalLanguageDisabled(APIException):
+    status_code = 503
+    default_detail = "Ask an application administrator to enable AI in the application settings."
+    default_code = "natural_language_disabled"
+
+
+class AICredentialsUnavailable(APIException):
+    status_code = 503
+    default_detail = (
+        "AI credentials are unavailable. An application administrator must restore or replace "
+        "the saved credential."
+    )
+    default_code = "ai_credentials_unavailable"
+
+
 ERROR_DETAILS: dict[str, tuple[int, str, str]] = {
     "dataset_changed": (
         409,
@@ -58,6 +73,17 @@ ERROR_DETAILS: dict[str, tuple[int, str, str]] = {
     "throttled": (429, "Too Many Requests", "Request limit exceeded."),
     "internal_error": (500, "Internal Server Error", "An unexpected error occurred."),
     "service_unavailable": (503, "Service Unavailable", "The service is temporarily unavailable."),
+    "natural_language_disabled": (
+        503,
+        "Service Unavailable",
+        "Ask an application administrator to enable AI in the application settings.",
+    ),
+    "ai_credentials_unavailable": (
+        503,
+        "Service Unavailable",
+        "AI credentials are unavailable. An application administrator must restore or replace "
+        "the saved credential.",
+    ),
 }
 
 
@@ -161,6 +187,8 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> JsonRespon
         (Throttled, "throttled"),
         (ServiceUnavailable, "service_unavailable"),
         (DatasetChanged, "dataset_changed"),
+        (NaturalLanguageDisabled, "natural_language_disabled"),
+        (AICredentialsUnavailable, "ai_credentials_unavailable"),
     )
     for exception_type, code in codes:
         if isinstance(exc, exception_type):

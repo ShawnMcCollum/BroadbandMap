@@ -9,7 +9,8 @@ in #15, and multi-state release identity is settled by
 already implemented and is independent of HTTP access policy.
 
 The general resource paths and numerical starting limits below guide endpoint planning;
-section 11 specifies the four implemented read contracts.
+section 11 specifies the four implemented data-read contracts. Section 12
+specifies the natural-language stub and administrator configuration contracts.
 Framework behavior is identified separately where relevant. Endpoint plans settle exact inputs,
 response fields, and implementation details before the corresponding endpoints are built. The
 examples do not imply that these business endpoints already exist.
@@ -77,6 +78,9 @@ Implemented resources and planned resource families:
 | Area metadata | `GET /api/v1/geographies/{level}/{code}/` | Describe a known area without automatically returning its polygon |
 | Summary counts | `GET /api/v1/served-unserved/rollups/` | Read stored rollups for one release and geographic level |
 | Area locations | `GET /api/v1/served-unserved/locations/` | Read bounded, paginated statuses behind one area |
+| Natural-language status | `GET /api/v1/natural-language/` | Public enabled/disabled status for the stub |
+| AI configuration | `GET/PATCH /api/v1/natural-language/configuration/` | Authorized application-admin settings and write-only credentials |
+| Natural-language question | `POST /api/v1/natural-language/query/` | Process a bounded question through the inert stub |
 
 Area metadata remains proposed. The four implemented read contracts are
 specified in section 11. Operational HTTP routes remain outside these resources.
@@ -203,7 +207,7 @@ The shared top-level codes are:
 | 404 / 405 / 406 / 415 | `not_found`, `method_not_allowed`, `not_acceptable`, `unsupported_media_type` |
 | 429 | `throttled` (no throttle policy is configured yet) |
 | 500 | `internal_error` |
-| 503 | `service_unavailable` for explicit `ServiceUnavailable` exceptions |
+| 503 | `service_unavailable` for explicit `ServiceUnavailable` exceptions; `natural_language_disabled` and `ai_credentials_unavailable` for the recognized AI states in section 12 |
 | Other errors | `http_error` for other 4xx statuses; generic `internal_error` for other 5xx statuses |
 
 Raise DRF exceptions, including serializer validation exceptions, rather than constructing endpoint
@@ -320,7 +324,8 @@ authentication_classes = []
 http_method_names = ["get", "head", "options"]
 ```
 
-Keep operational actions in authenticated Django admin or existing commands until #15 needs an API.
+AI configuration is the explicit administrator operation specified in section 12.
+Keep data-loading actions in authenticated Django admin or existing commands until #15 needs an API.
 Any later operational endpoint requires authentication, staff status, and the relevant operation
 permission. `IsAdminUser` alone means `is_staff`; it does not check a particular model or operation
 permission. Do not confuse authenticated users with administrators.
@@ -636,3 +641,93 @@ cannot serve it; pagination alone cannot solve that case. See
 GeoJSON successes use the registered GeoJSON media type. Requesting only
 `application/json` from this resource yields 406; use `application/geo+json` or
 `*/*`. All error responses still use `application/problem+json`.
+
+## 12. Natural-language stub and administrator configuration
+
+Issue #31 adds a model-free question/answer representation backed by persistent
+application settings, following [ADR 0020](decisions/0020-natural-language-query-stub.md).
+The settings are writable metadata; imported broadband data remains read-only.
+Provider/model identifiers and limits are stored for later integration, not
+verified against a provider. No provider or broadband queries are performed.
+
+### Administrator settings
+
+`GET /api/v1/natural-language/configuration/` and PATCH at the same route require
+an active staff account with `natural_language.manage_ai_configuration`, using
+the shared operation permission policy. Staff superusers follow Django semantics.
+The entire resource, including HEAD/OPTIONS, requires that policy. Ordinary users
+cannot access it merely by possessing the operation permission.
+
+Retain session authentication and CSRF enforcement for PATCH. Protected GET sets
+the CSRF cookie the frontend needs. The frontend's login/navigation and same-origin
+proxy integration belong to #32; hiding settings controls is not an access policy.
+
+GET and successful PATCH return JSON with these explicit fields:
+
+| Field | Meaning |
+|---|---|
+| `enabled` | Saved enable switch |
+| `provider`, `model_name` | Saved identifiers; empty allowed while disabled |
+| `timeout_seconds` | Integer 1–120, default 30, reserved for provider integration |
+| `max_output_tokens` | Integer 1–8,192, default 1,024, reserved for provider integration |
+| `key_configured` | Encrypted provider credential is stored |
+| `key_available` | Stored credential can currently be decrypted |
+| `is_stub` | Always true |
+| `provider_validated` | Always false |
+| `updated_at` | ISO timestamp of the last successful change |
+
+PATCH takes a nonempty JSON object with any subset of `enabled`, `provider`,
+`model_name`, `timeout_seconds`, `max_output_tokens`, `api_key`, and `clear_api_key`.
+Booleans and integers are strict JSON types, without string/numeric coercion.
+Provider identifiers are trimmed, maximum 64 characters, and match
+`^[a-z][a-z0-9_.-]{0,63}$` when nonempty. Model names are trimmed, maximum 200.
+Enabling requires nonempty identifiers and an available credential.
+
+`api_key` is write-only, trimmed, nonblank, maximum 4,096 characters. Omission
+preserves it; null/blank is invalid. `clear_api_key: true` removes it and disables
+the feature atomically. Clearing cannot be combined with a replacement key or
+`enabled: true`. Changing provider while a key is stored requires replacement
+or clearing. Unknown/read-only body fields receive `unknown_field` errors.
+
+No response includes plaintext keys, ciphertext, storage paths, or updater
+identity. Settings changes validate the merged state under one transaction and
+singleton row lock. New requests read current settings without a service restart.
+No generic create/delete route exists. Unsupported methods return 405 after
+access checks. Recognized storage failures use a safe 503; rejected changes do
+not partially persist settings. Sensitive successful responses use no-store.
+
+The backend manages random Fernet encryption material in a separate backend-only
+Docker volume. Missing/corrupt material never silently replaces an existing
+credential. Metadata and explicit clearing remain available for recovery.
+Database and secret-volume backups must be preserved together. The application
+administrator's ordinary workflow needs no terminal or environment-file edits.
+
+### Public status and question processing
+
+`GET /api/v1/natural-language/` returns `enabled`, `is_stub`, and `message`.
+Effective availability requires complete enabled settings and readable credentials.
+Do not disclose detailed configuration publicly. Disabled guidance directs users
+to an application administrator. Allow anonymous GET, HEAD, OPTIONS only.
+
+`POST /api/v1/natural-language/query/` accepts exactly one `question` string,
+trimmed, nonblank, maximum 2,000 characters. Reject nonstring values and unknown
+fields; validate input before the feature gate. POST processes body content
+without changing imported data and keeps question text out of URL access logs.
+Allow public POST/OPTIONS only while this remains an inert stub.
+
+Return `question`, the fixed explanatory `answer`, and `is_stub: true` on 200.
+The answer explicitly says no broadband data was queried and no external provider
+was contacted. Questions are never interpreted as executable SQL or tool calls.
+Do not accept provider credentials on this route.
+
+Disabled/incomplete configuration returns 503 `natural_language_disabled`, with
+fixed detail `Ask an application administrator to enable AI in the application settings.`
+Unreadable credentials in enabled settings return 503 `ai_credentials_unavailable`,
+with fixed detail `AI credentials are unavailable. An application administrator must restore or replace the saved credential.`
+Other errors use the shared contract. All new routes reject query parameters
+through StrictQuerySerializer; successful status/query responses use no-store.
+
+Before integrating a live provider, settle supported providers/models, parameter
+compatibility, question-submission authorization, quotas, timeouts, guarded data
+access, and costs. Public access to an inert stub does not authorize public use
+of an installation's paid provider credential.

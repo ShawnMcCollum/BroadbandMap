@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "bdc",
     "served_unserved",
     "etl",
+    "natural_language",
 ]
 
 MIDDLEWARE = [
@@ -92,6 +93,7 @@ DATABASES = {
 }
 
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+AI_CREDENTIALS_KEY_FILE = Path("/run/broadbandmap-secrets/ai-credentials.key")
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -122,8 +124,8 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "BroadbandMap API",
     "DESCRIPTION": (
-        "Public release discovery, Served/Not served summaries, and county GeoJSON. "
-        "Location drill-down is planned in issue #26."
+        "Public release discovery, Served/Not served summaries, county GeoJSON, location "
+        "drill-down, and an inert natural-language query stub."
     ),
     "VERSION": "1.0.0",
     "OAS_VERSION": "3.0.3",
