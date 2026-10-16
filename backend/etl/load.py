@@ -1,4 +1,4 @@
-"""Add one FCC release to the database, with its state's census boundaries if not yet loaded."""
+"""Add one state's FCC file to its release, with the state's census boundaries if not yet loaded."""
 
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -14,11 +14,12 @@ from etl.assign import assign_blocks
 from etl.bulk import copy_rows
 from etl.errors import LoadError, ReconciliationError
 from etl.fcc import LocationRow, read_locations
-from etl.files import check_files, find_fcc_file, read_fcc_name, tiger_path
+from etl.files import FccFile, check_files, find_fcc_file, read_fcc_name, tiger_path
 from etl.reconcile import Counts, database_counts, differences, expected_rollup_totals
 from etl.tiger import LEVELS, read_level
 from geography.models import Block, State
 from served_unserved.models import Rollup, RollupLevel, ServedStatus
+from served_unserved.release_states import delete_state, holds_state
 from served_unserved.rollups import build_rollups
 
 # The tables data loads write. Only these tables may refer to them, so deleting a release never
@@ -37,10 +38,14 @@ def _quiet(message: str) -> None:
 
 @dataclass(frozen=True)
 class LoadResult:
-    """What a data load wrote. The release is named by its dates, never by its id (ADR 0013)."""
+    """What a data load wrote: one state's part of a release.
+
+    The release is named by its dates, never by its id (ADR 0013).
+    """
 
     as_of: date
     processed_on: date
+    state_fips: str
     source: Counts
     database: Counts
     seconds: float
@@ -50,26 +55,22 @@ class LoadResult:
         return {
             "as_of": self.as_of.isoformat(),
             "processed_on": self.processed_on.isoformat(),
+            "state_fips": self.state_fips,
             "seconds": round(self.seconds, 1),
             "source": self.source.as_dict(),
             "database": self.database.as_dict(),
         }
 
 
-def check_one_state(state_fips: str) -> None:
-    """Raise LoadError if the database holds another state's boundaries (ADR 0013)."""
-    other = State.objects.exclude(pk=state_fips).values_list("name", flat=True).first()
-    if other is not None:
-        raise LoadError(
-            f"the database holds the census boundaries of {other}; "
-            f"another state ({state_fips}) cannot be loaded beside it"
-        )
+def check_geometries(state_fips: str) -> None:
+    """Raise LoadError if PostGIS finds an invalid geometry among the state's boundaries.
 
-
-def check_geometries() -> None:
-    """Raise LoadError if PostGIS finds an invalid geometry in any boundary table."""
+    Every boundary GEOID starts with its state's FIPS code.
+    """
     for level in LEVELS:
-        invalid = level.model._default_manager.filter(geom__isvalid=False)
+        invalid = level.model._default_manager.filter(
+            pk__startswith=state_fips, geom__isvalid=False
+        )
         geoids = [str(pk) for pk in invalid.values_list("pk", flat=True)[:5]]
         if geoids:
             raise LoadError(
@@ -159,15 +160,21 @@ def load_boundaries(
         source.rows[level.label] = count
         report_rows(progress, level.model, count, began)
 
-    check_geometries()
+    check_geometries(state_fips)
 
     began = time.monotonic()
-    in_place = assign_blocks()
+    in_place = assign_blocks(state_fips)
     progress(
         f"block assignment: {in_place:,} of {source.rows['block']:,} blocks in a place, "
         f"in {time.monotonic() - began:.0f} s"
     )
     return geoids["block"]
+
+
+def loaded_release(fcc: FccFile) -> tuple[Release | None, bool]:
+    """The loaded release with the file's dates, if any, and whether it holds the file's state."""
+    release = Release.objects.filter(as_of=fcc.as_of, processed_on=fcc.processed_on).first()
+    return release, release is not None and holds_state(release, fcc.state_fips)
 
 
 def load_served_unserved(
@@ -177,12 +184,15 @@ def load_served_unserved(
     fcc_file: Path | None = None,
     replace: bool = False,
 ) -> LoadResult:
-    """Add the FCC release in ``data_dir`` to the database, beside any release already loaded.
+    """Add the state's FCC file in ``data_dir`` to its release, beside the states and releases
+    already loaded.
 
     ``fcc_file`` names the FCC zip when ``data_dir`` holds several; a relative path is taken
-    from ``data_dir``. The first load for a state also loads its census boundaries from
-    ``data_dir``; later loads use the boundaries already loaded. A release that is already loaded
-    is replaced when ``replace`` is set, and refused otherwise. Other releases are never changed.
+    from ``data_dir``. A release is national, named by its two dates (ADR 0017): the first file
+    of a release creates it, and later files add their states to it. The first load for a state
+    also loads its census boundaries from ``data_dir``; later loads use the boundaries already
+    loaded. A state the release already holds is replaced when ``replace`` is set, and refused
+    otherwise. Other states and releases are never changed.
 
     Everything happens in one transaction: if any check fails, the database is left as it was.
     The load takes no lock that holds up readers (ADR 0013). It first takes the write lock, and
@@ -190,28 +200,27 @@ def load_served_unserved(
     """
     started = time.monotonic()
     fcc = find_fcc_file(data_dir) if fcc_file is None else read_fcc_name(data_dir / fcc_file)
-    release = Release(
-        filing_period=fcc.filing_period, as_of=fcc.as_of, processed_on=fcc.processed_on
-    )
+    named = Release(filing_period=fcc.filing_period, as_of=fcc.as_of, processed_on=fcc.processed_on)
     source = Counts()
     with transaction.atomic(durable=True):
         # Before the database is read, so that nothing read here changes until the commit.
-        take_write_lock(f"load of {release}")
-        check_one_state(fcc.state_fips)
-        loaded = Release.objects.filter(as_of=fcc.as_of, processed_on=fcc.processed_on).first()
-        if loaded is not None and not replace:
-            raise LoadError(f"{loaded} is already loaded; use --replace to load it again")
+        take_write_lock(f"load of state {fcc.state_fips} into {named}")
+        release, state_loaded = loaded_release(fcc)
         state_name = State.objects.filter(pk=fcc.state_fips).values_list("name", flat=True).first()
+        if state_loaded and not replace:
+            raise LoadError(
+                f"{state_name} is already loaded in {release}; use --replace to load it again"
+            )
         tiger = {
             level.label: tiger_path(data_dir, level.file_name(fcc.state_fips)) for level in LEVELS
         }
         progress(f"Checking source files in {data_dir}")
         check_files(fcc, tiger.values() if state_name is None else ())
 
-        if loaded is not None:
+        if release is not None and state_loaded:
             began = time.monotonic()
-            Release.objects.filter(pk=loaded.pk).delete()
-            progress(f"Deleted {loaded} in {time.monotonic() - began:.0f} s")
+            delete_state(release, fcc.state_fips)
+            progress(f"Deleted {state_name} from {release} in {time.monotonic() - began:.0f} s")
 
         if state_name is None:
             block_geoids = load_boundaries(fcc.state_fips, tiger, source, progress)
@@ -219,7 +228,9 @@ def load_served_unserved(
             progress(f"Census boundaries for {state_name} are already loaded")
             block_geoids = loaded_blocks(fcc.state_fips)
 
-        release.save(force_insert=True)
+        if release is None:
+            release = named
+            release.save(force_insert=True)
 
         began = time.monotonic()
         count = copy_rows(
@@ -258,7 +269,7 @@ def load_served_unserved(
 
         for rollup_level in RollupLevel:
             began = time.monotonic()
-            count = build_rollups(release, rollup_level)
+            count = build_rollups(release, fcc.state_fips, rollup_level)
             progress(
                 f"rollups by {rollup_level}: {count:,} rows in {time.monotonic() - began:.0f} s"
             )
@@ -271,9 +282,7 @@ def load_served_unserved(
 
         source.rollup_totals = expected_rollup_totals(source.county_rollups)
         progress("Reconciling counts")
-        database = database_counts(
-            release, boundaries_of=fcc.state_fips if state_name is None else None
-        )
+        database = database_counts(release, fcc.state_fips, boundaries=state_name is None)
         problems = differences(source, database)
         if problems:
             raise ReconciliationError(
@@ -281,5 +290,10 @@ def load_served_unserved(
             )
 
     return LoadResult(
-        release.as_of, release.processed_on, source, database, time.monotonic() - started
+        release.as_of,
+        release.processed_on,
+        fcc.state_fips,
+        source,
+        database,
+        time.monotonic() - started,
     )

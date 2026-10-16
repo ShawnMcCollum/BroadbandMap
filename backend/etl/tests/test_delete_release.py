@@ -21,7 +21,8 @@ from core.tests.helpers import (
 from core.write_lock import Holder, write_lock_holder
 from etl.load import LOADER_MODELS, load_served_unserved
 from etl.management.commands.delete_release import Command
-from etl.tests.helpers import J25_STEM, j25_csv, make_data_dir
+from etl.tests.helpers import J25_STEM, WV_STEM, j25_csv, make_data_dir, wv_csv
+from geography.models import Block
 from served_unserved.models import Rollup, ServedStatus
 
 pytestmark = pytest.mark.django_db
@@ -60,6 +61,22 @@ def test_deletes_one_release_and_leaves_the_other(tmp_path: Path) -> None:
         r"Deleted June 2025 \(processed 2026-10-01\): 30 statuses and 16 rollups in \d+ s\.\n",
         out.getvalue(),
     )
+
+
+def test_deletes_every_state_of_the_release(tmp_path: Path) -> None:
+    load_served_unserved(make_data_dir(tmp_path))
+    load_served_unserved(make_data_dir(tmp_path / "wv", csv=wv_csv(), fcc_stem=WV_STEM))
+    out = StringIO()
+
+    call_command("delete_release", *DECEMBER, "--no-input", stdout=out)
+
+    assert re.fullmatch(
+        r"Deleted December 2025 \(processed 2026-09-29\): 37 statuses and 30 rollups in \d+ s\.\n",
+        out.getvalue(),
+    )
+    assert Release.objects.count() == 0
+    assert Rollup.objects.count() == 0
+    assert Block.objects.count() == 126
 
 
 def test_unknown_release_is_refused(tmp_path: Path) -> None:

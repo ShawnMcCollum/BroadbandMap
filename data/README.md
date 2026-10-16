@@ -78,7 +78,8 @@ docker compose run --rm --no-deps backend python scripts/fetch_boundaries.py --i
 | County subdivision | [`tl_2020_39_cousub.zip`](https://www2.census.gov/geo/tiger/TIGER2020/COUSUB/tl_2020_39_cousub.zip) | 6 MB |
 | ZIP Code Tabulation Area (opt-in) | [`tl_2020_us_zcta520.zip`](https://www2.census.gov/geo/tiger/TIGER2020/ZCTA520/tl_2020_us_zcta520.zip) | 528 MB |
 
-State and county files cover the whole country; the loader keeps only Ohio.
+State and county files cover the whole country; a data load keeps only the
+state it loads.
 
 | | |
 |---|---|
@@ -98,3 +99,27 @@ second release, download the June 2025 Ohio file as in section 1, but with
 `bdc_39_fixed_broadband_served_unserved_J25_01oct2026.zip`: the FCC processed
 the June 2025 data on 1 October 2026, after the December 2025 data. Load it as
 described in [Add another release](../README.md#add-another-release).
+
+## 4. Another state (optional)
+
+A data load adds one state to a release. To add a second state, for example
+West Virginia (FIPS code 54):
+
+1. Download its Served/Unserved file as in section 1, choosing the state
+   under **State**, and save it to `data/raw/`. Its name starts with the
+   state's FIPS code, for example
+   `bdc_54_fixed_broadband_served_unserved_D25_13oct2026.zip`.
+2. Download its census boundary files, naming the state by its FIPS code:
+
+   ```powershell
+   docker compose run --rm --no-deps backend python scripts/fetch_boundaries.py --state 54
+   ```
+
+   The nationwide state and county files are skipped if already
+   downloaded. West Virginia's own five files are about 200 MB, mostly
+   census blocks.
+
+Each state's file name carries the date the FCC processed the release, and
+the FCC offers only its latest processing, so files downloaded at different
+times can belong to different releases. Load the file as described in
+[Add another state](../README.md#add-another-state).

@@ -40,6 +40,7 @@ class RollupAdmin(ReadOnlyModelAdmin):
     list_display = (
         "code",
         "level",
+        "state_id",
         "release",
         "locations",
         "any_100_20",

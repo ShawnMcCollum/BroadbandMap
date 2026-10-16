@@ -5,12 +5,21 @@ from django.contrib.gis.geos import Point
 
 from etl.assign import assign_blocks
 from etl.errors import LoadError
-from geography.models import Block, BlockGroup, County, CountySubdivision, Place, State
+from geography.models import (
+    Block,
+    BlockGroup,
+    County,
+    CountySubdivision,
+    Place,
+    State,
+    Tract,
+)
 from geography.tests.helpers import boundary_fields, square
 
 FIRST = "390490001101000"
 SECOND = "390490001101001"
 THIRD = "390490001101002"
+WV_BLOCK = "540090311031011"
 
 
 def add_place(state: State, geoid: str, lon: float, lat: float, size: float) -> Place:
@@ -78,7 +87,7 @@ ASSIGNED = {
 
 
 def test_assigns_the_areas_that_hold_each_internal_point(layout: None) -> None:
-    assert assign_blocks() == 1
+    assert assign_blocks("39") == 1
 
     assert areas() == ASSIGNED
 
@@ -87,9 +96,40 @@ def test_reassigning_replaces_earlier_areas(layout: None) -> None:
     Block.objects.filter(pk=SECOND).update(place_id="3918000")
     Block.objects.filter(pk=THIRD).update(county_subdivision_id="3904918000")
 
-    assign_blocks()
+    assign_blocks("39")
 
     assert areas() == ASSIGNED
+
+
+def test_assigns_only_the_state_s_blocks(layout: None) -> None:
+    wv = State.objects.create(
+        geoid="54", name="West Virginia", abbreviation="WV", **boundary_fields()
+    )
+    brooke = County.objects.create(
+        geoid="54009", name="Brooke County", state=wv, **boundary_fields()
+    )
+    tract = Tract.objects.create(
+        geoid="54009031103", name="Census Tract 311.03", county=brooke, **boundary_fields()
+    )
+    group = BlockGroup.objects.create(
+        geoid="540090311031", name="Block Group 1", tract=tract, **boundary_fields()
+    )
+    add_place(wv, "5485156", -80.6, 40.4, 0.02)
+    add_county_subdivision(brooke, "5400993552", -80.6, 40.4, 0.04)
+    add_block(group, WV_BLOCK, -80.595, 40.405)
+
+    assert assign_blocks("39") == 1
+
+    assert areas() == ASSIGNED | {WV_BLOCK: (None, None)}
+
+    Block.objects.filter(pk=THIRD).update(county_subdivision_id="3904918000")
+
+    assert assign_blocks("54") == 1
+
+    assert areas() == ASSIGNED | {
+        THIRD: (None, "3904918000"),
+        WV_BLOCK: ("5485156", "5400993552"),
+    }
 
 
 def test_block_in_no_county_subdivision_fails(layout: None, block_group: BlockGroup) -> None:
@@ -98,7 +138,7 @@ def test_block_in_no_county_subdivision_fails(layout: None, block_group: BlockGr
     with pytest.raises(
         LoadError, match=re.escape("census blocks in no county subdivision: 390490001101003")
     ):
-        assign_blocks()
+        assign_blocks("39")
 
 
 def test_county_subdivision_of_another_county_is_not_matched(
@@ -113,7 +153,7 @@ def test_county_subdivision_of_another_county_is_not_matched(
     with pytest.raises(
         LoadError, match=re.escape("census blocks in no county subdivision: 390490001101003")
     ):
-        assign_blocks()
+        assign_blocks("39")
 
 
 def test_point_in_two_places_fails(layout: None, state: State) -> None:
@@ -126,7 +166,7 @@ def test_point_in_two_places_fails(layout: None, state: State) -> None:
             f"{FIRST} (places 3918000, 3983342)"
         ),
     ):
-        assign_blocks()
+        assign_blocks("39")
 
     assert areas() == {FIRST: (None, None), SECOND: (None, None), THIRD: (None, None)}
 
@@ -141,4 +181,4 @@ def test_point_in_two_county_subdivisions_fails(layout: None, county: County) ->
             f"{SECOND} (county subdivisions 3904918000, 3904971787)"
         ),
     ):
-        assign_blocks()
+        assign_blocks("39")

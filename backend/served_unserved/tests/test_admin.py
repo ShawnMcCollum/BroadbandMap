@@ -3,6 +3,7 @@ from django.test import Client
 from django.urls import reverse
 
 from bdc.models import Release
+from geography.models import State
 from served_unserved.models import Rollup, ServedStatus
 
 CHANGELIST = "admin:served_unserved_servedstatus_changelist"
@@ -94,9 +95,12 @@ def test_search_by_code_finds_the_rollup(admin_client: Client, rollup: Rollup) -
     assert list(response.context["cl"].result_list) == [rollup]
 
 
-def test_search_by_h3_cell_finds_the_rollup(admin_client: Client, release: Release) -> None:
+def test_search_by_h3_cell_finds_the_rollup(
+    admin_client: Client, release: Release, state: State
+) -> None:
     cell = Rollup.objects.create(
         release=release,
+        state=state,
         level="h3_res8",
         code="882a91ae3bfffff",
         locations=10,
@@ -109,6 +113,28 @@ def test_search_by_h3_cell_finds_the_rollup(admin_client: Client, release: Relea
 
     assert response.status_code == 200
     assert list(response.context["cl"].result_list) == [cell]
+
+
+def test_rollup_changelist_shows_the_state(
+    admin_client: Client, release: Release, state: State, wv_state: State
+) -> None:
+    for each in (state, wv_state):
+        Rollup.objects.create(
+            release=release,
+            state=each,
+            level="h3_res8",
+            code="882a91ae3bfffff",
+            locations=10,
+            any_100_20=8,
+            wired_100_20=4,
+            terrestrial_100_20=6,
+        )
+
+    response = admin_client.get(reverse(ROLLUPS))
+
+    assert response.status_code == 200
+    assert '<td class="field-state_id">39</td>' in response.text
+    assert '<td class="field-state_id">54</td>' in response.text
 
 
 # The search is an exact match, so a prefix finds nothing.

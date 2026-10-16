@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.db import transaction
 from django.db.models import F, ForeignObjectRel
 from pytest import MonkeyPatch
@@ -24,7 +25,7 @@ from core.write_lock import Holder, WriteLockHeld, write_lock_holder
 from etl.errors import LoadError, ReconciliationError
 from etl.fcc import LocationRow, read_locations
 from etl.files import FccFile
-from etl.load import LOADER_MODELS, LoadResult, check_one_state, load_served_unserved
+from etl.load import LOADER_MODELS, LoadResult, load_served_unserved, loaded_release
 from etl.reconcile import Counts, database_counts
 from etl.tests.helpers import (
     FCC_STEM,
@@ -32,9 +33,12 @@ from etl.tests.helpers import (
     J25_ROLLUPS,
     J25_STEM,
     MALFORMED,
+    WV_ROLLUPS,
+    WV_STEM,
     edit_csv,
     j25_csv,
     make_data_dir,
+    wv_csv,
 )
 from etl.tiger import LEVELS
 from geography.models import (
@@ -47,9 +51,8 @@ from geography.models import (
     State,
     Tract,
 )
-from geography.tests.helpers import boundary_fields
 from served_unserved.models import Rollup, ServedStatus
-from served_unserved.rollups import COUNT_FIELDS, build_rollups
+from served_unserved.rollups import COUNT_FIELDS, build_rollups, statuses_in
 
 pytestmark = pytest.mark.django_db
 
@@ -66,6 +69,29 @@ FIXTURE_COUNTS = {
     "Release": 1,
 }
 EMPTY_COUNTS = dict.fromkeys(FIXTURE_COUNTS, 0)
+# Ohio's and West Virginia's fixture files, loaded into one release
+BOTH_COUNTS = {
+    "State": 2,
+    "County": 2,
+    "Tract": 2,
+    "BlockGroup": 4,
+    "Block": 126,
+    "Place": 2,
+    "CountySubdivision": 3,
+    "Rollup": 30,
+    "ServedStatus": 37,
+    "Release": 1,
+}
+WV_SOURCE_ROWS = {
+    "state": 1,
+    "county": 1,
+    "tract": 1,
+    "block_group": 2,
+    "block": 77,
+    "place": 1,
+    "county_subdivision": 1,
+    "served_status": 6,
+}
 
 
 def table_counts() -> dict[str, int]:
@@ -81,9 +107,23 @@ def load_j25(tmp_path: Path) -> LoadResult:
     return load_served_unserved(make_data_dir(tmp_path / "j25", csv=j25_csv(), fcc_stem=J25_STEM))
 
 
+def load_wv(tmp_path: Path, *, replace: bool = False) -> LoadResult:
+    """Load West Virginia's file of the December 2025 release, from its own data directory."""
+    data_dir = make_data_dir(tmp_path / "wv", csv=wv_csv(), fcc_stem=WV_STEM)
+    return load_served_unserved(data_dir, replace=replace)
+
+
 def rollups(release: Release) -> list[tuple[object, ...]]:
     return sorted(
         Rollup.objects.filter(release=release).values_list("level", "code", *COUNT_FIELDS)
+    )
+
+
+def state_rollups(release: Release, state_fips: str) -> list[tuple[object, ...]]:
+    return sorted(
+        Rollup.objects.filter(release=release, state_id=state_fips).values_list(
+            "level", "code", *COUNT_FIELDS
+        )
     )
 
 
@@ -92,6 +132,17 @@ def snapshot(release: Release) -> tuple[list[tuple[object, ...]], list[tuple[obj
     statuses = ServedStatus.objects.filter(release=release).order_by("id").values_list()
     rollup_rows = Rollup.objects.filter(release=release).order_by("id").values_list()
     return list(statuses), list(rollup_rows)
+
+
+def state_snapshot(
+    release: Release, state_fips: str
+) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
+    """A state's status and rollup rows in a release, row ids included."""
+    statuses = ServedStatus.objects.filter(release=release, block__geoid__startswith=state_fips)
+    rollup_rows = Rollup.objects.filter(release=release, state_id=state_fips)
+    return list(statuses.order_by("id").values_list()), list(
+        rollup_rows.order_by("id").values_list()
+    )
 
 
 def test_loads_the_fixture_files(tmp_path: Path) -> None:
@@ -271,6 +322,8 @@ def test_release_comes_from_the_file_name(tmp_path: Path) -> None:
     assert (result.as_of, result.processed_on) == (release.as_of, release.processed_on)
     assert result.as_dict()["as_of"] == "2025-12-31"
     assert result.as_dict()["processed_on"] == "2026-09-29"
+    assert result.state_fips == "39"
+    assert result.as_dict()["state_fips"] == "39"
 
 
 def test_second_release_is_added_beside_the_first(tmp_path: Path) -> None:
@@ -323,14 +376,15 @@ def test_fcc_file_chooses_among_several(tmp_path: Path) -> None:
     assert list(Release.objects.values_list("filing_period", flat=True)) == ["D25", "J25"]
 
 
-def test_loaded_release_is_refused(tmp_path: Path) -> None:
+def test_loaded_state_is_refused(tmp_path: Path) -> None:
     load(tmp_path)
     before = snapshot(Release.objects.get())
 
     with pytest.raises(
         LoadError,
         match=re.escape(
-            "December 2025 (processed 2026-09-29) is already loaded; use --replace to load it again"
+            "Ohio is already loaded in December 2025 (processed 2026-09-29); "
+            "use --replace to load it again"
         ),
     ):
         load(tmp_path)
@@ -340,9 +394,11 @@ def test_loaded_release_is_refused(tmp_path: Path) -> None:
 
 def test_replace_loads_the_release_again(tmp_path: Path) -> None:
     first = load(tmp_path)
+    release_pk = Release.objects.get().pk
 
     second = load(tmp_path, replace=True)
 
+    assert Release.objects.get().pk == release_pk
     assert table_counts() == FIXTURE_COUNTS
     assert second.source == second.database
     assert second.database.rows == {"served_status": 31}
@@ -374,17 +430,6 @@ def test_failed_replace_leaves_the_database_unchanged(tmp_path: Path) -> None:
     assert snapshot(release) == before
 
 
-def test_another_state_is_refused(tmp_path: Path) -> None:
-    State.objects.create(geoid="54", name="West Virginia", abbreviation="WV", **boundary_fields())
-
-    with pytest.raises(
-        LoadError, match="the database holds the census boundaries of West Virginia"
-    ):
-        load(tmp_path)
-
-    assert table_counts() == EMPTY_COUNTS | {"State": 1}
-
-
 def test_blocks_without_a_county_subdivision_are_refused(tmp_path: Path) -> None:
     load(tmp_path)
     Block.objects.filter(pk="390553120001004").update(county_subdivision=None)
@@ -411,8 +456,11 @@ def test_no_load_takes_a_lock_that_blocks_readers(tmp_path: Path) -> None:
     j25_dir = make_data_dir(tmp_path / "j25", csv=j25_csv(), fcc_stem=J25_STEM)
     load_served_unserved(j25_dir, progress=record)
     load_served_unserved(data_dir, progress=record, replace=True)
+    wv_dir = make_data_dir(tmp_path / "wv", csv=wv_csv(), fcc_stem=WV_STEM)
+    load_served_unserved(wv_dir, progress=record)
+    load_served_unserved(wv_dir, progress=record, replace=True)
 
-    assert held == [[], [], []]
+    assert held == [[], [], [], [], []]
 
 
 def test_takes_the_write_lock_before_reading_the_database(
@@ -420,11 +468,11 @@ def test_takes_the_write_lock_before_reading_the_database(
 ) -> None:
     holders: list[Holder | None] = []
 
-    def record(state_fips: str) -> None:
+    def record(fcc: FccFile) -> tuple[Release | None, bool]:
         holders.append(write_lock_holder())
-        check_one_state(state_fips)
+        return loaded_release(fcc)
 
-    monkeypatch.setattr("etl.load.check_one_state", record)
+    monkeypatch.setattr("etl.load.loaded_release", record)
 
     load(tmp_path)
 
@@ -432,7 +480,7 @@ def test_takes_the_write_lock_before_reading_the_database(
     assert holders[0] is not None
     assert (holders[0].pid, holders[0].operation) == (
         backend_pid(),
-        "load of December 2025 (processed 2026-09-29)",
+        "load of state 39 into December 2025 (processed 2026-09-29)",
     )
 
 
@@ -500,8 +548,8 @@ def test_duplicate_location_id(tmp_path: Path) -> None:
 
 
 def test_reconciliation_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    def short_by_one(release: Release, boundaries_of: str | None = None) -> Counts:
-        counts = database_counts(release, boundaries_of)
+    def short_by_one(release: Release, state_fips: str, *, boundaries: bool = False) -> Counts:
+        counts = database_counts(release, state_fips, boundaries=boundaries)
         counts.rows["served_status"] -= 1
         return counts
 
@@ -514,8 +562,8 @@ def test_reconciliation_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyP
 
 
 def test_rollup_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    def short_by_one(release: Release, level: str) -> int:
-        count = build_rollups(release, level)
+    def short_by_one(release: Release, state_fips: str, level: str) -> int:
+        count = build_rollups(release, state_fips, level)
         if level == "county":
             Rollup.objects.filter(release=release, level=level).update(
                 wired_100_20=F("wired_100_20") - 1
@@ -533,8 +581,8 @@ def test_rollup_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) ->
 
 
 def test_rollup_totals_mismatch_rolls_back(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
-    def drop_a_cell(release: Release, level: str) -> int:
-        count = build_rollups(release, level)
+    def drop_a_cell(release: Release, state_fips: str, level: str) -> int:
+        count = build_rollups(release, state_fips, level)
         if level == "h3_res8":
             Rollup.objects.filter(release=release, level=level, code="882ab14f59fffff").delete()
         return count
@@ -580,7 +628,7 @@ def test_progress_when_the_boundaries_are_loaded(tmp_path: Path) -> None:
     load_served_unserved(make_data_dir(tmp_path), progress=messages.append, replace=True)
 
     assert any(
-        message.startswith("Deleted December 2025 (processed 2026-09-29) in ")
+        message.startswith("Deleted Ohio from December 2025 (processed 2026-09-29) in ")
         for message in messages
     )
     assert "Census boundaries for Ohio are already loaded" in messages
@@ -588,6 +636,117 @@ def test_progress_when_the_boundaries_are_loaded(tmp_path: Path) -> None:
     assert not any(message.startswith("block assignment:") for message in messages)
     assert any(message.startswith("served statuses: 31 rows") for message in messages)
     assert "Analyzing statuses" in messages
+
+
+def test_second_state_joins_the_release(tmp_path: Path) -> None:
+    load(tmp_path)
+    release = Release.objects.get()
+    ohio = state_snapshot(release, "39")
+
+    result = load_wv(tmp_path)
+
+    assert Release.objects.get().pk == release.pk
+    assert state_snapshot(release, "39") == ohio
+    assert state_rollups(release, "54") == WV_ROLLUPS
+    assert table_counts() == BOTH_COUNTS
+    assert result.state_fips == "54"
+    assert result.source == result.database
+    assert result.source.rows == WV_SOURCE_ROWS
+
+
+def test_states_load_in_either_order(tmp_path: Path) -> None:
+    load_wv(tmp_path)
+
+    load(tmp_path)
+
+    release = Release.objects.get()
+    assert state_rollups(release, "39") == FIXTURE_ROLLUPS
+    assert state_rollups(release, "54") == WV_ROLLUPS
+    assert table_counts() == BOTH_COUNTS
+
+
+def test_cell_on_the_state_line_has_a_row_per_state(tmp_path: Path) -> None:
+    load(tmp_path)
+    load_wv(tmp_path)
+
+    release = Release.objects.get()
+    cell = Rollup.objects.filter(release=release, level="h3_res8", code="882ab14f33fffff")
+    assert list(cell.order_by("state").values_list("state_id", *COUNT_FIELDS)) == [
+        ("39", 13, 13, 10, 10),
+        ("54", 1, 1, 0, 1),
+    ]
+    assert statuses_in(release, "h3_res8", "882ab14f33fffff").count() == 14
+
+
+def test_loaded_second_state_is_refused(tmp_path: Path) -> None:
+    load(tmp_path)
+    load_wv(tmp_path)
+    release = Release.objects.get()
+    before = snapshot(release)
+
+    with pytest.raises(
+        LoadError,
+        match=re.escape(
+            "West Virginia is already loaded in December 2025 (processed 2026-09-29); "
+            "use --replace to load it again"
+        ),
+    ):
+        load_wv(tmp_path)
+
+    assert snapshot(release) == before
+
+
+def test_replacing_a_state_leaves_the_other_alone(tmp_path: Path) -> None:
+    load(tmp_path)
+    load_wv(tmp_path)
+    release = Release.objects.get()
+    ohio = state_snapshot(release, "39")
+
+    result = load_wv(tmp_path, replace=True)
+
+    assert Release.objects.get().pk == release.pk
+    assert state_snapshot(release, "39") == ohio
+    assert state_rollups(release, "54") == WV_ROLLUPS
+    assert table_counts() == BOTH_COUNTS
+    assert result.source == result.database
+
+
+def test_second_state_assigns_only_its_blocks(tmp_path: Path) -> None:
+    load(tmp_path)
+    # Middlefield township: a reassignment of Ohio's blocks would show.
+    Block.objects.filter(pk="390553120001004").update(county_subdivision_id="3905549714")
+
+    load_wv(tmp_path)
+
+    assert Block.objects.get(pk="390553120001004").county_subdivision_id == "3905549714"
+    west_virginia = Block.objects.filter(geoid__startswith="54")
+    assert west_virginia.filter(county_subdivision_id="5400993552").count() == 77
+    assert west_virginia.exclude(place=None).count() == 64
+
+
+def test_second_state_checks_only_its_geometries(tmp_path: Path) -> None:
+    load(tmp_path)
+    bow_tie = Polygon(((-81.2, 41.4), (-81.1, 41.5), (-81.1, 41.4), (-81.2, 41.5), (-81.2, 41.4)))
+    Tract.objects.filter(pk="39055312000").update(geom=MultiPolygon(bow_tie, srid=4326))
+
+    load_wv(tmp_path)
+
+    assert ServedStatus.objects.filter(block__geoid__startswith="54").count() == 6
+
+
+def test_progress_for_a_second_state(tmp_path: Path) -> None:
+    load(tmp_path)
+    messages: list[str] = []
+
+    data_dir = make_data_dir(tmp_path / "wv", csv=wv_csv(), fcc_stem=WV_STEM)
+    load_served_unserved(data_dir, progress=messages.append)
+
+    assert any(message.startswith("census blocks: 77 rows") for message in messages)
+    assert any(
+        message.startswith("block assignment: 64 of 77 blocks in a place") for message in messages
+    )
+    assert any(message.startswith("served statuses: 6 rows") for message in messages)
+    assert "Analyzing blocks and statuses" in messages
 
 
 def test_refuses_to_run_inside_another_transaction(tmp_path: Path) -> None:
