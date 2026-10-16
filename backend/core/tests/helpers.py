@@ -1,8 +1,21 @@
-from collections.abc import Sequence
+import re
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from django.db import connection, models
+from django.db import connection, models, transaction
+
+from core.write_lock import take_write_lock
+
+# A load that another connection runs in the write-lock tests
+LOAD_RUNNING = "load of June 2025 (processed 2026-10-01)"
+# What a writer refused the lock is told while that load runs
+REFUSED_BY_LOAD = re.compile(
+    r"another writer is running: load of June 2025 \(processed 2026-10-01\), process \d+, "
+    r"since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d UTC; try again once it has finished"
+)
 
 # PostgreSQL's statistics on manual vacuums and analyzes of each table. A vacuum or analyze
 # reports them as it finishes, so a query in a later transaction sees them.
@@ -55,3 +68,54 @@ def exclusive_locks() -> list[str]:
     with connection.cursor() as cursor:
         cursor.execute(EXCLUSIVE_LOCKS)
         return [name for (name,) in cursor.fetchall()]
+
+
+def backend_pid() -> int:
+    """The process id of this connection's PostgreSQL backend."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_backend_pid()")
+        (pid,) = cursor.fetchone()
+    return int(pid)
+
+
+def application_name() -> str:
+    """This connection's application_name."""
+    with connection.cursor() as cursor:
+        cursor.execute("SHOW application_name")
+        (name,) = cursor.fetchone()
+    return str(name)
+
+
+@contextmanager
+def lock_held_elsewhere(operation: str) -> Iterator[None]:
+    """Hold the write lock, labelled ``operation``, on another connection while the block runs.
+
+    The other connection is a thread's own. Its transaction writes nothing, and it is closed
+    before the block's exit returns.
+    """
+    holding = threading.Event()
+    finish = threading.Event()
+    failures: list[BaseException] = []
+
+    def hold() -> None:
+        try:
+            with transaction.atomic():
+                take_write_lock(operation)
+                holding.set()
+                finish.wait(timeout=30)
+        except BaseException as error:
+            failures.append(error)
+        finally:
+            holding.set()
+            connection.close()
+
+    thread = threading.Thread(target=hold)
+    thread.start()
+    holding.wait(timeout=30)
+    try:
+        if failures:
+            raise failures[0]
+        yield
+    finally:
+        finish.set()
+        thread.join(timeout=30)

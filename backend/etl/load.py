@@ -9,6 +9,7 @@ from pathlib import Path
 from django.db import IntegrityError, connection, models, transaction
 
 from bdc.models import Release
+from core.write_lock import take_write_lock
 from etl.assign import assign_blocks
 from etl.bulk import copy_rows
 from etl.errors import LoadError, ReconciliationError
@@ -184,21 +185,29 @@ def load_served_unserved(
     is replaced when ``replace`` is set, and refused otherwise. Other releases are never changed.
 
     Everything happens in one transaction: if any check fails, the database is left as it was.
-    The load takes no lock that holds up readers (ADR 0013).
+    The load takes no lock that holds up readers (ADR 0013). It first takes the write lock, and
+    raises WriteLockHeld at once if another writer holds it (ADR 0015).
     """
     started = time.monotonic()
     fcc = find_fcc_file(data_dir) if fcc_file is None else read_fcc_name(data_dir / fcc_file)
-    check_one_state(fcc.state_fips)
-    loaded = Release.objects.filter(as_of=fcc.as_of, processed_on=fcc.processed_on).first()
-    if loaded is not None and not replace:
-        raise LoadError(f"{loaded} is already loaded; use --replace to load it again")
-    state_name = State.objects.filter(pk=fcc.state_fips).values_list("name", flat=True).first()
-    tiger = {level.label: tiger_path(data_dir, level.file_name(fcc.state_fips)) for level in LEVELS}
-    progress(f"Checking source files in {data_dir}")
-    check_files(fcc, tiger.values() if state_name is None else ())
-
+    release = Release(
+        filing_period=fcc.filing_period, as_of=fcc.as_of, processed_on=fcc.processed_on
+    )
     source = Counts()
     with transaction.atomic(durable=True):
+        # Before the database is read, so that nothing read here changes until the commit.
+        take_write_lock(f"load of {release}")
+        check_one_state(fcc.state_fips)
+        loaded = Release.objects.filter(as_of=fcc.as_of, processed_on=fcc.processed_on).first()
+        if loaded is not None and not replace:
+            raise LoadError(f"{loaded} is already loaded; use --replace to load it again")
+        state_name = State.objects.filter(pk=fcc.state_fips).values_list("name", flat=True).first()
+        tiger = {
+            level.label: tiger_path(data_dir, level.file_name(fcc.state_fips)) for level in LEVELS
+        }
+        progress(f"Checking source files in {data_dir}")
+        check_files(fcc, tiger.values() if state_name is None else ())
+
         if loaded is not None:
             began = time.monotonic()
             Release.objects.filter(pk=loaded.pk).delete()
@@ -210,9 +219,7 @@ def load_served_unserved(
             progress(f"Census boundaries for {state_name} are already loaded")
             block_geoids = loaded_blocks(fcc.state_fips)
 
-        release = Release.objects.create(
-            filing_period=fcc.filing_period, as_of=fcc.as_of, processed_on=fcc.processed_on
-        )
+        release.save(force_insert=True)
 
         began = time.monotonic()
         count = copy_rows(

@@ -1,4 +1,5 @@
 import re
+import time
 from datetime import date
 from io import StringIO
 
@@ -8,7 +9,15 @@ from django.core.management.base import CommandError
 from pytest import MonkeyPatch
 
 from bdc.models import Release
-from core.tests.helpers import exclusive_locks, table_stats
+from core.tests.helpers import (
+    LOAD_RUNNING,
+    REFUSED_BY_LOAD,
+    backend_pid,
+    exclusive_locks,
+    lock_held_elsewhere,
+    table_stats,
+)
+from core.write_lock import take_write_lock, write_lock_holder
 from geography.models import Block
 from served_unserved.models import Rollup, ServedStatus
 from served_unserved.rollups import COUNT_FIELDS, build_rollups
@@ -126,6 +135,85 @@ def test_build_rollups_takes_no_lock_that_blocks_readers(
 
     # Every lock is held until the test's transaction ends, so this sees both runs' locks.
     assert exclusive_locks() == []
+
+
+def test_build_rollups_is_refused_while_a_load_runs(
+    served_status: ServedStatus, rollup: Rollup
+) -> None:
+    # Made by fixtures, not by build_rollups: this test's transaction would keep its write lock.
+    with lock_held_elsewhere(LOAD_RUNNING):
+        began = time.monotonic()
+        with pytest.raises(CommandError) as refused:
+            call_command("build_rollups", stdout=StringIO())
+        elapsed = time.monotonic() - began
+
+    assert REFUSED_BY_LOAD.fullmatch(str(refused.value))
+    assert elapsed < 1
+    assert list(Rollup.objects.values_list("level", "code", "locations")) == [
+        ("county", "39049", 10)
+    ]
+
+
+def test_build_rollups_takes_the_write_lock(served_status: ServedStatus, june: Release) -> None:
+    call_command("build_rollups", *JUNE, stdout=StringIO())
+
+    holder = write_lock_holder()
+    assert holder is not None
+    assert (holder.pid, holder.operation) == (
+        backend_pid(),
+        "rollup rebuild of June 2025 (processed 2026-10-01)",
+    )
+
+
+def test_build_rollups_release_deleted_before_the_lock(
+    served_status: ServedStatus, rollup: Rollup, monkeypatch: MonkeyPatch
+) -> None:
+    def delete_then_lock(operation: str) -> None:
+        Release.objects.all().delete()
+        take_write_lock(operation)
+
+    monkeypatch.setattr(
+        "served_unserved.management.commands.build_rollups.take_write_lock", delete_then_lock
+    )
+
+    with pytest.raises(
+        CommandError, match=re.escape("December 2025 (processed 2026-09-29) is no longer loaded")
+    ):
+        call_command("build_rollups", stdout=StringIO())
+
+
+def test_build_rollups_release_replaced_before_the_lock_is_rebuilt_by_its_dates(
+    served_status: ServedStatus, monkeypatch: MonkeyPatch
+) -> None:
+    replaced: list[Release] = []
+
+    def replace_then_lock(operation: str) -> None:
+        old = Release.objects.get()
+        old.delete()
+        new = Release.objects.create(
+            filing_period="D25", as_of=old.as_of, processed_on=old.processed_on
+        )
+        ServedStatus.objects.create(
+            release=new,
+            location_id=served_status.location_id,
+            block=served_status.block,
+            h3_res8=served_status.h3_res8,
+            any_100_20=True,
+            wired_100_20=True,
+            terrestrial_100_20=True,
+        )
+        replaced.append(new)
+        take_write_lock(operation)
+
+    monkeypatch.setattr(
+        "served_unserved.management.commands.build_rollups.take_write_lock", replace_then_lock
+    )
+    out = StringIO()
+
+    call_command("build_rollups", stdout=out)
+
+    assert out.getvalue() == "Built 7 rollups for December 2025 (processed 2026-09-29).\n"
+    assert set(Rollup.objects.values_list("release_id", flat=True)) == {replaced[0].pk}
 
 
 @pytest.mark.django_db(transaction=True)
