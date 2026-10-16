@@ -73,6 +73,9 @@ block assignment ran over every state's boundaries.
    rows before returning it, and the map shows the sum.
 9. **Deleting a release deletes every state in it.** Removing one state from a
    release is left for later.
+   - *Implemented in [#65](https://github.com/ShawnMcCollum/BroadbandMap/issues/65):*
+     `delete_release --state` deletes one state's statuses and rollups from a
+     release, and deletes the release with its last state.
 10. **A rollup rebuild covers every state of the release,** and removes the rows
     of any state without statuses.
 
