@@ -1,4 +1,4 @@
-# 0015 — REST API contract and tests
+# 0016 — REST API contract and tests
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
