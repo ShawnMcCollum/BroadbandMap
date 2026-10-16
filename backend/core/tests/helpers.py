@@ -12,6 +12,16 @@ FROM pg_stat_user_tables
 WHERE relname = ANY(%s)
 """
 
+# Relations this connection holds ACCESS EXCLUSIVE locks on. A read takes an ACCESS SHARE lock,
+# which no other lock mode blocks.
+EXCLUSIVE_LOCKS = """
+SELECT DISTINCT c.relname
+FROM pg_locks AS l
+JOIN pg_class AS c ON c.oid = l.relation
+WHERE l.pid = pg_backend_pid() AND l.mode = 'AccessExclusiveLock'
+ORDER BY 1
+"""
+
 
 @dataclass(frozen=True)
 class TableStats:
@@ -34,3 +44,14 @@ def table_stats(tables: Sequence[type[models.Model]]) -> dict[str, TableStats]:
     with connection.cursor() as cursor:
         cursor.execute(TABLE_STATS, [names])
         return {name: TableStats(*stats) for name, *stats in cursor.fetchall()}
+
+
+def exclusive_locks() -> list[str]:
+    """The relations this connection holds ACCESS EXCLUSIVE locks on, which block readers.
+
+    A lock is held until the transaction that took it ends, so inside a test's transaction this
+    lists every such lock the test has taken.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(EXCLUSIVE_LOCKS)
+        return [name for (name,) in cursor.fetchall()]
