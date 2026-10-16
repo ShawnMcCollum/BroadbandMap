@@ -7,11 +7,12 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from django.db import connection, transaction
+from django.db import transaction
 from django.db.models import F, ForeignObjectRel
 from pytest import MonkeyPatch
 
 from bdc.models import Release
+from core.tests.helpers import exclusive_locks
 from etl.errors import LoadError, ReconciliationError
 from etl.fcc import LocationRow, read_locations
 from etl.files import FccFile
@@ -58,16 +59,6 @@ FIXTURE_COUNTS = {
 }
 EMPTY_COUNTS = dict.fromkeys(FIXTURE_COUNTS, 0)
 
-# Relations this connection holds ACCESS EXCLUSIVE locks on. A read takes an ACCESS SHARE lock,
-# which no other lock mode blocks.
-EXCLUSIVE_LOCKS = """
-SELECT DISTINCT c.relname
-FROM pg_locks AS l
-JOIN pg_class AS c ON c.oid = l.relation
-WHERE l.pid = pg_backend_pid() AND l.mode = 'AccessExclusiveLock'
-ORDER BY 1
-"""
-
 
 def table_counts() -> dict[str, int]:
     return {model.__name__: model._default_manager.count() for model in LOADER_MODELS}
@@ -93,12 +84,6 @@ def snapshot(release: Release) -> tuple[list[tuple[object, ...]], list[tuple[obj
     statuses = ServedStatus.objects.filter(release=release).order_by("id").values_list()
     rollup_rows = Rollup.objects.filter(release=release).order_by("id").values_list()
     return list(statuses), list(rollup_rows)
-
-
-def exclusive_locks() -> list[str]:
-    with connection.cursor() as cursor:
-        cursor.execute(EXCLUSIVE_LOCKS)
-        return [name for (name,) in cursor.fetchall()]
 
 
 def test_loads_the_fixture_files(tmp_path: Path) -> None:

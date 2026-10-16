@@ -120,7 +120,10 @@ without a full reload, run:
 docker compose run --rm backend python manage.py build_rollups
 ```
 
-It then vacuums and analyzes the rollups.
+It rebuilds every loaded release, about half a minute each for Ohio, then
+vacuums and analyzes the rollups. To rebuild one release, name it by the date
+its data describes and the date the FCC processed it, for example
+`--as-of 2025-06-30 --processed-on 2026-10-01`.
 
 A database loaded before places and county subdivisions had rollups has
 census blocks without them, and data loads and `build_rollups` stop with an
@@ -149,6 +152,24 @@ It takes about three minutes, since the census boundaries are already
 loaded. Releases can be loaded in any order. Loading a release that is
 already loaded stops with an error; add `--replace` to load it again. Until
 the replacement is committed, readers see the release as it was.
+
+#### Delete a release
+
+Deleting a release undoes its data load
+([ADR 0006](docs/decisions/0006-data-model-for-locations-and-boundaries.md)).
+Name the release by its two dates, as for `build_rollups`:
+
+```powershell
+docker compose run --rm backend python manage.py delete_release --as-of 2025-06-30 --processed-on 2026-10-01
+```
+
+The command asks for confirmation; add `--no-input` to skip the question. It
+deletes the release with its statuses and rollups, in one transaction, and
+changes no other release. If no release has those dates, it lists the dates of
+the releases that are loaded. Readers see the release until the deletion
+commits, and no query waits for it. The command then vacuums and analyzes the
+tables it changed, so the next data load reuses their space. For Ohio, it
+takes about ten seconds.
 
 ### Checks
 
