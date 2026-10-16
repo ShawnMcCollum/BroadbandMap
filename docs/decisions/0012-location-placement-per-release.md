@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-15
+- **Amended by:** [0021](0021-indexes-only-where-queries-read.md), which drops the `location_id` index
 - **Follow-up:** [#46](https://github.com/ShawnMcCollum/BroadbandMap/issues/46) implements this decision
 
 ## Context
@@ -104,6 +105,7 @@ Two findings matter beyond the counts:
      admin's search by location ID and lookups of one location across
      releases. Whether to keep it stays with
      [#43](https://github.com/ShawnMcCollum/BroadbandMap/issues/43).
+   - *Amended by [0021](0021-indexes-only-where-queries-read.md):* the index is dropped. A search for one location names every release, and the unique index finds it with one probe per release.
    - `Location` held nothing but placement, and every reader reaches it through
      a status. Without it, a load reads the CSV once instead of twice, writes
      one 4.5M-row table instead of two and checks one 4.5M-row foreign key

@@ -393,11 +393,11 @@ Architectural and scope decisions are recorded in
 - [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
 - [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 - [0016 — REST API contract and tests](docs/decisions/0016-rest-api-contract-and-tests.md)
-- [0017 — National releases loaded by state](docs/decisions/0017-national-releases-loaded-by-state.md)
+- [0017 — A release is national, and a data load adds one state](docs/decisions/0017-national-releases-loaded-by-state.md)
 - [0018 — County GeoJSON for initial map output](docs/decisions/0018-county-geojson-map-output.md)
 - [0019 — Location drill-down with release-wide cursor generations](docs/decisions/0019-location-cursors.md)
 - [0020 — Natural-language stub with persistent application configuration](docs/decisions/0020-natural-language-query-stub.md)
-- [0017 — A release is national, and a data load adds one state](docs/decisions/0017-national-releases-loaded-by-state.md)
+- [0021 — An index only where a query reads through it](docs/decisions/0021-indexes-only-where-queries-read.md)
 
 The adopted REST API conventions and implementation guidance are in
 [docs/api-guidelines.md](docs/api-guidelines.md).
