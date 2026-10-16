@@ -1,4 +1,5 @@
 import re
+import time
 from datetime import date
 from io import StringIO
 from pathlib import Path
@@ -9,7 +10,15 @@ from django.core.management.base import CommandError
 from pytest import MonkeyPatch
 
 from bdc.models import Release
-from core.tests.helpers import exclusive_locks, table_stats
+from core.tests.helpers import (
+    LOAD_RUNNING,
+    REFUSED_BY_LOAD,
+    backend_pid,
+    exclusive_locks,
+    lock_held_elsewhere,
+    table_stats,
+)
+from core.write_lock import Holder, write_lock_holder
 from etl.load import LOADER_MODELS, load_served_unserved
 from etl.management.commands.delete_release import Command
 from etl.tests.helpers import J25_STEM, j25_csv, make_data_dir
@@ -163,6 +172,43 @@ def test_takes_no_lock_that_blocks_readers(tmp_path: Path) -> None:
     # Every lock is held until the test's transaction ends, so this sees the loads' and the
     # deletion's. The loads take none (test_no_load_takes_a_lock_that_blocks_readers).
     assert exclusive_locks() == []
+
+
+def test_refused_while_another_writer_runs(served_status: ServedStatus, rollup: Rollup) -> None:
+    # Made by fixtures, not by a load: this test's transaction would keep a load's write lock.
+    before = snapshot(served_status.release)
+
+    with lock_held_elsewhere(LOAD_RUNNING):
+        began = time.monotonic()
+        with pytest.raises(CommandError) as refused:
+            call_command("delete_release", *DECEMBER, "--no-input")
+        elapsed = time.monotonic() - began
+
+    assert REFUSED_BY_LOAD.fullmatch(str(refused.value))
+    assert elapsed < 1
+    assert snapshot(served_status.release) == before
+
+
+def test_takes_the_write_lock_after_the_answer(
+    served_status: ServedStatus, monkeypatch: MonkeyPatch
+) -> None:
+    holders: list[Holder | None] = []
+
+    def answer_yes(prompt: str) -> str:
+        holders.append(write_lock_holder())
+        return "yes"
+
+    monkeypatch.setattr("builtins.input", answer_yes)
+
+    call_command("delete_release", *DECEMBER, stdout=StringIO())
+
+    holder = write_lock_holder()
+    assert holders == [None]
+    assert holder is not None
+    assert (holder.pid, holder.operation) == (
+        backend_pid(),
+        "deletion of December 2025 (processed 2026-09-29)",
+    )
 
 
 @pytest.mark.django_db(transaction=True)

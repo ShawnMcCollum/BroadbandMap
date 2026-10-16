@@ -104,6 +104,13 @@ database unchanged. The application keeps running meanwhile, and no query
 waits for a data load
 ([ADR 0013](docs/decisions/0013-release-scoped-data-loads.md)).
 
+Only one data load, release deletion or rollup rebuild runs at a time. One
+started while another is running stops at once, changes nothing, and names the
+one running, for example `another writer is running: load of June 2025
+(processed 2026-10-01), process 4321, since 2026-10-16 03:36:57 UTC; try again
+once it has finished`
+([ADR 0015](docs/decisions/0015-one-writer-at-a-time.md)).
+
 Once the load has committed, the command vacuums and analyzes the loaded
 tables, which takes a few seconds: the space of any rows the load deleted is
 reused by the next one, and queries are planned with statistics that include
@@ -207,6 +214,7 @@ Architectural and scope decisions are recorded in
 - [0012 — A location's block and H3 cell are stored per release](docs/decisions/0012-location-placement-per-release.md)
 - [0013 — A data load adds one release](docs/decisions/0013-release-scoped-data-loads.md)
 - [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
+- [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

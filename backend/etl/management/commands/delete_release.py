@@ -10,6 +10,7 @@ from django.db import transaction
 from bdc.models import Release
 from bdc.release_options import add_release_options, find_release
 from core.maintenance import vacuum_analyze
+from core.write_lock import WriteLockHeld, take_write_lock
 from served_unserved.models import Rollup, ServedStatus
 
 
@@ -17,7 +18,8 @@ class Command(BaseCommand):
     help = (
         "Delete the release that --as-of and --processed-on name, with its statuses and rollups, "
         "in one transaction. Other releases are not changed. Once the deletion has committed, "
-        "the statuses, rollups and releases are vacuumed and analyzed."
+        "the statuses, rollups and releases are vacuumed and analyzed. Stops at once if another "
+        "data load, deletion or rollup rebuild is running."
     )
 
     def add_arguments(self, parser: ArgumentParser) -> None:
@@ -50,10 +52,15 @@ class Command(BaseCommand):
         began = time.monotonic()
         # By its dates, not its id: a replace while the question was open gives the release a
         # new id (ADR 0013, decision 4).
-        with transaction.atomic(durable=True):
-            _, deleted = Release.objects.filter(
-                as_of=release.as_of, processed_on=release.processed_on
-            ).delete()
+        try:
+            with transaction.atomic(durable=True):
+                # After the answer, so that no lock is held while waiting for one.
+                take_write_lock(f"deletion of {release}")
+                _, deleted = Release.objects.filter(
+                    as_of=release.as_of, processed_on=release.processed_on
+                ).delete()
+        except WriteLockHeld as error:
+            raise CommandError(str(error)) from error
         if not deleted.get(Release._meta.label):
             raise CommandError(f"{release} is no longer loaded")
         statuses = deleted.get(ServedStatus._meta.label, 0)
