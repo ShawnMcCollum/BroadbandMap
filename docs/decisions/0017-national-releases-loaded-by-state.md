@@ -50,6 +50,11 @@ block assignment ran over every state's boundaries.
    that its code starts with the state's FIPS code. An H3 cell on a state line
    has one row per state, and **a cell's counts in a release are the sum of
    its rows.** No data load writes another state's rows.
+   - Two indexes serve the two ways rollups are read. The unique index,
+     (`release`, `level`, `code`, `state`), serves reads by area. An index on
+     (`release`, `state`, `level`) serves each load's deletes, builds and
+     reconciliation of its own state's rows, so their cost does not grow with
+     the other states in the release.
 5. **Reconciliation is per state in a release.** The statuses counted are those
    in the state's blocks, and the rollups those of the state, at every level
    including H3. Every count is still compared with the file being loaded.
@@ -79,8 +84,8 @@ Ohio). Single runs, so the timings are indicative.
 | | Before | After |
 |---|---|---|
 | Rollups: heap, after `VACUUM FULL` | 61 MB | 67 MB |
-| Rollups: indexes, after `VACUUM FULL` | 52 MB | 59 MB |
-| Migration (757,792 rollup rows) | — | 20 s |
+| Rollups: indexes, after `VACUUM FULL` | 52 MB | 64 MB |
+| Migration (757,792 rollup rows) | — | 22 s |
 | Replacing J25 | 154 s (0013) | 177 s and 168 s |
 | Block assignment, Ohio | 27 s (0010) | 23 s |
 
@@ -88,6 +93,16 @@ Most of the difference in the J25 replace is run-to-run variation. Its
 statuses' `COPY`, which this decision does not change, took 78 s and 64 s
 against 62 s in 0013; its rollups took 32 s and 35 s against 30 s. The first
 run followed the 12-minute full-data suite.
+
+The index on (`release`, `state`, `level`) is 5 MB of the 64 MB, because each
+state has one key per level, and building it takes 2 s of the migration.
+Without it, finding a state's H3 rows read 1,829 pages of the unique index,
+every other state's H3 rows in the release, in 24 ms; with it, the same lookup
+reads 6 pages in 0.05 ms. The per-state totals that reconciliation reads went
+from a scan of the whole table, 12,947 pages, to 3 pages. Those lookups were
+made for a state the release does not hold. For the state that a release does
+hold, the planner still scans the table while that state is a large share of
+it, as Ohio is today.
 
 Adding the state's filter to the rollup groupings keeps their plan, a parallel
 sequential scan over the release's statuses, within single-run noise. Asking
@@ -130,5 +145,9 @@ whether a release holds a state is an index scan of 0.07 ms.
   Downloading them from the same processing puts them in one release.
 - **Negative:** Undoing the migration fails once a release holds two states'
   rows for one H3 cell.
-- **Follow-up:** removing one state from a release; #3 adds up H3 rows and
-  returns each release's states; #15 records the state of each load.
+- **Negative:** Every load maintains a second index on the rollups. It is 5 MB
+  for Ohio's two releases.
+- **Follow-up:** removing one state from a release
+  ([#65](https://github.com/ShawnMcCollum/BroadbandMap/issues/65)); #3 adds up
+  H3 rows and returns each release's states; #15 records the state of each
+  load.

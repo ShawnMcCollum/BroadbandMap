@@ -266,6 +266,12 @@ class Rollup(models.Model):
                 name="served_unserved_rollup_wired_within_terrestrial",
             ),
         ]
+        # A data load deletes, builds and reconciles its own state's rows, level by level. The
+        # unique index leads with level and code, for reads by area, so it cannot narrow those to
+        # one state, and they would read every state's rows in the release (ADR 0017).
+        indexes = [
+            models.Index(fields=["release", "state", "level"], name="rollup_release_state_level"),
+        ]
 
     def __str__(self) -> str:
         return f"{self.get_level_display()} {self.code} in {self.release}"

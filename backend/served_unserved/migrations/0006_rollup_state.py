@@ -97,4 +97,10 @@ class Migration(migrations.Migration):
                 name="served_unserved_rollup_code_in_state",
             ),
         ),
+        migrations.AddIndex(
+            model_name="rollup",
+            index=models.Index(
+                fields=["release", "state", "level"], name="rollup_release_state_level"
+            ),
+        ),
     ]
