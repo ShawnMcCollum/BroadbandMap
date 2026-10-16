@@ -6,7 +6,7 @@ from typing import Any
 from rest_framework import serializers
 
 from bdc.api.serializers import ReleaseQuery, ReleaseSummary
-from core.api.pagination import PageEnvelope
+from core.api.pagination import IntegerQueryField, PageEnvelope
 from served_unserved.models import AREA_KEYS, RollupLevel
 
 
@@ -29,7 +29,7 @@ class RollupQuery(ReleaseQuery):
         "cell containment.",
     )
     flag = serializers.ChoiceField(choices=["any", "wired", "terrestrial"], default="wired")
-    page_size = serializers.IntegerField(min_value=1, max_value=1000, default=100)
+    page_size = IntegerQueryField(min_value=1, max_value=1000, default=100)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         attrs = super().validate(attrs)

@@ -472,6 +472,13 @@ reads. Each response is evaluated and serialized in a short read-only repeatable
 transaction; release identity, state coverage, totals, and page rows see the same
 snapshot. Readers take no writer guard. No transaction spans HTTP requests.
 
+Pagination inputs use ASCII integer notation before numeric bounds are applied.
+Decimal forms such as `1.0` and `10.00`, exponent notation, and surrounding
+whitespace are rejected with 400. Leading zeros are accepted; signed integers
+still pass through the documented minimum/maximum checks. The shared
+`IntegerQueryField` applies this policy to every pagination input, including the
+summary endpoint's larger page-size cap. Response count fields remain integers.
+
 ### Releases
 
 `GET /api/v1/releases/` accepts `page` (default 1, minimum 1) and `page_size`

@@ -1,5 +1,6 @@
 """Bounded page-number reads with explicit, reproducible query links."""
 
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -10,9 +11,21 @@ from rest_framework.request import Request
 from core.api.validation import StrictQuerySerializer
 
 
+class IntegerQueryField(serializers.IntegerField):
+    """Check integer notation before DRF coerces whole-valued decimal strings."""
+
+    def to_internal_value(self, value: Any) -> int:
+        if isinstance(value, str):
+            if not re.fullmatch(r"[+-]?[0-9]+", value):
+                self.fail("invalid")
+        elif type(value) is not int:
+            self.fail("invalid")
+        return super().to_internal_value(value)
+
+
 class PageQuery(StrictQuerySerializer):
-    page = serializers.IntegerField(min_value=1, default=1)
-    page_size = serializers.IntegerField(min_value=1, max_value=100, default=100)
+    page = IntegerQueryField(min_value=1, default=1)
+    page_size = IntegerQueryField(min_value=1, max_value=100, default=100)
 
 
 def page_bounds(count: int, params: dict[str, Any]) -> tuple[int, int]:
