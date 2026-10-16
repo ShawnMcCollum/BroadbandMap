@@ -1,10 +1,904 @@
 {
-  "components": {},
+  "components": {
+    "schemas": {
+      "BadRequestProblem": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Problem"
+          },
+          {
+            "$ref": "#/components/schemas/ValidationProblem"
+          }
+        ]
+      },
+      "CountyCollection": {
+        "properties": {
+          "boundary_vintage": {
+            "type": "integer"
+          },
+          "count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "features": {
+            "items": {
+              "$ref": "#/components/schemas/CountyFeature"
+            },
+            "type": "array"
+          },
+          "next": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "previous": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/GeoJSONCollectionType"
+          }
+        },
+        "required": [
+          "boundary_vintage",
+          "count",
+          "features",
+          "next",
+          "previous",
+          "state",
+          "type"
+        ],
+        "type": "object"
+      },
+      "CountyFeature": {
+        "properties": {
+          "geometry": {
+            "$ref": "#/components/schemas/MultiPolygonGeometry"
+          },
+          "id": {
+            "type": "string"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/CountyProperties"
+          },
+          "type": {
+            "$ref": "#/components/schemas/GeoJSONFeatureType"
+          }
+        },
+        "required": [
+          "geometry",
+          "id",
+          "properties",
+          "type"
+        ],
+        "type": "object"
+      },
+      "CountyProperties": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "FieldError": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "pointer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "pointer"
+        ],
+        "type": "object"
+      },
+      "FlagEnum": {
+        "description": "* `any` - any\n* `wired` - wired\n* `terrestrial` - terrestrial",
+        "enum": [
+          "any",
+          "wired",
+          "terrestrial"
+        ],
+        "type": "string"
+      },
+      "GeoJSONCollectionType": {
+        "description": "* `FeatureCollection` - FeatureCollection",
+        "enum": [
+          "FeatureCollection"
+        ],
+        "type": "string"
+      },
+      "GeoJSONFeatureType": {
+        "description": "* `Feature` - Feature",
+        "enum": [
+          "Feature"
+        ],
+        "type": "string"
+      },
+      "GeoJSONGeometryType": {
+        "description": "* `MultiPolygon` - MultiPolygon",
+        "enum": [
+          "MultiPolygon"
+        ],
+        "type": "string"
+      },
+      "LevelEnum": {
+        "description": "* `county` - County\n* `tract` - Census tract\n* `block_group` - Block group\n* `block` - Census block\n* `h3_res8` - H3 resolution-8 cell\n* `place` - Place\n* `county_subdivision` - County subdivision",
+        "enum": [
+          "county",
+          "tract",
+          "block_group",
+          "block",
+          "h3_res8",
+          "place",
+          "county_subdivision"
+        ],
+        "type": "string"
+      },
+      "MultiPolygonGeometry": {
+        "properties": {
+          "coordinates": {
+            "items": {
+              "items": {
+                "items": {
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "type": "array"
+                },
+                "minItems": 4,
+                "type": "array"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "type": {
+            "$ref": "#/components/schemas/GeoJSONGeometryType"
+          }
+        },
+        "required": [
+          "coordinates",
+          "type"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ProblemCodeEnum"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "request_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "status": {
+            "maximum": 599,
+            "minimum": 400,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ProblemType"
+          }
+        },
+        "required": [
+          "code",
+          "detail",
+          "request_id",
+          "status",
+          "title",
+          "type"
+        ],
+        "type": "object"
+      },
+      "ProblemCodeEnum": {
+        "description": "* `parse_error` - parse_error\n* `bad_request` - bad_request\n* `not_authenticated` - not_authenticated\n* `authentication_failed` - authentication_failed\n* `permission_denied` - permission_denied\n* `not_found` - not_found\n* `method_not_allowed` - method_not_allowed\n* `not_acceptable` - not_acceptable\n* `unsupported_media_type` - unsupported_media_type\n* `throttled` - throttled\n* `internal_error` - internal_error\n* `service_unavailable` - service_unavailable\n* `http_error` - http_error",
+        "enum": [
+          "parse_error",
+          "bad_request",
+          "not_authenticated",
+          "authentication_failed",
+          "permission_denied",
+          "not_found",
+          "method_not_allowed",
+          "not_acceptable",
+          "unsupported_media_type",
+          "throttled",
+          "internal_error",
+          "service_unavailable",
+          "http_error"
+        ],
+        "type": "string"
+      },
+      "ProblemType": {
+        "description": "* `about:blank` - about:blank",
+        "enum": [
+          "about:blank"
+        ],
+        "type": "string"
+      },
+      "ReleasePage": {
+        "properties": {
+          "count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "previous": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "next",
+          "previous",
+          "results"
+        ],
+        "type": "object"
+      },
+      "ReleaseSummary": {
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "type": "string"
+          },
+          "filing_period": {
+            "type": "string"
+          },
+          "processed_on": {
+            "format": "date",
+            "type": "string"
+          },
+          "states": {
+            "items": {
+              "$ref": "#/components/schemas/StateSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of",
+          "filing_period",
+          "processed_on",
+          "states"
+        ],
+        "type": "object"
+      },
+      "RollupPage": {
+        "properties": {
+          "boundary_vintage": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "count": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "previous": {
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "release": {
+            "$ref": "#/components/schemas/ReleaseSummary"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/RollupResult"
+            },
+            "type": "array"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/SummarySelection"
+          },
+          "summary_coverage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SummaryCoverageEnum"
+              }
+            ],
+            "description": "Collections enumerate stored rows only. Use code to distinguish no observations, outside-release states, or unavailable rollups (503). Missing rows are never implied zeros.\n\n* `stored_rollups_only` - stored_rollups_only\n* `observed` - observed\n* `no_observations` - no_observations\n* `outside_release_coverage` - outside_release_coverage"
+          },
+          "threshold": {
+            "$ref": "#/components/schemas/SpeedThreshold"
+          }
+        },
+        "required": [
+          "boundary_vintage",
+          "count",
+          "next",
+          "previous",
+          "release",
+          "results",
+          "selection",
+          "summary_coverage",
+          "threshold"
+        ],
+        "type": "object"
+      },
+      "RollupResult": {
+        "properties": {
+          "any_100_20": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "locations": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "not_served": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "served": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "terrestrial_100_20": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "wired_100_20": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "any_100_20",
+          "code",
+          "locations",
+          "not_served",
+          "served",
+          "terrestrial_100_20",
+          "wired_100_20"
+        ],
+        "type": "object"
+      },
+      "SpeedThreshold": {
+        "properties": {
+          "download_mbps": {
+            "type": "integer"
+          },
+          "upload_mbps": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "download_mbps",
+          "upload_mbps"
+        ],
+        "type": "object"
+      },
+      "StateSummary": {
+        "properties": {
+          "abbreviation": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "abbreviation",
+          "code",
+          "name"
+        ],
+        "type": "object"
+      },
+      "SummaryCoverageEnum": {
+        "description": "* `stored_rollups_only` - stored_rollups_only\n* `observed` - observed\n* `no_observations` - no_observations\n* `outside_release_coverage` - outside_release_coverage",
+        "enum": [
+          "stored_rollups_only",
+          "observed",
+          "no_observations",
+          "outside_release_coverage"
+        ],
+        "type": "string"
+      },
+      "SummarySelection": {
+        "properties": {
+          "code": {
+            "nullable": true,
+            "type": "string"
+          },
+          "flag": {
+            "$ref": "#/components/schemas/FlagEnum"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LevelEnum"
+          },
+          "state": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "flag",
+          "level",
+          "state"
+        ],
+        "type": "object"
+      },
+      "ValidationProblem": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ValidationProblemCodeEnum"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/FieldError"
+            },
+            "type": "array"
+          },
+          "request_id": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "status": {
+            "maximum": 599,
+            "minimum": 400,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ProblemType"
+          }
+        },
+        "required": [
+          "code",
+          "detail",
+          "errors",
+          "request_id",
+          "status",
+          "title",
+          "type"
+        ],
+        "type": "object"
+      },
+      "ValidationProblemCodeEnum": {
+        "description": "* `validation_error` - validation_error",
+        "enum": [
+          "validation_error"
+        ],
+        "type": "string"
+      }
+    }
+  },
   "info": {
-    "description": "Versioned HTTP API foundation. Business resources are added in issues #3 and #26.",
+    "description": "Public release discovery, Served/Not served summaries, and county GeoJSON. Location drill-down is planned in issue #26.",
     "title": "BroadbandMap API",
     "version": "1.0.0"
   },
   "openapi": "3.0.3",
-  "paths": {}
+  "paths": {
+    "/api/v1/geographies/county/": {
+      "get": {
+        "description": "RFC 7946 county MultiPolygons in WGS84, ordered by GEOID. Feature IDs match summary codes. Boundaries do not assert release coverage. Maximum 100 features and 5 MiB per response; request fewer features if the byte limit is exceeded.",
+        "operationId": "county_geojson_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "maxLength": 2,
+              "minLength": 2,
+              "pattern": "^[0-9]{2}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/geo+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountyCollection"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/releases/": {
+      "get": {
+        "description": "Loaded releases ordered by descending data period, then processing date. Each release discloses its actual states; dates do not imply nationwide coverage.",
+        "operationId": "releases_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasePage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "tags": [
+          "v1"
+        ]
+      }
+    },
+    "/api/v1/served-unserved/rollups/": {
+      "get": {
+        "description": "Stored 100/20 Mbps counts ordered by area code. H3 rows sum contributing states before pagination. Geometry is separate. Links pin resolved release dates, but separate pages are fresh reads and may change after replacement or rebuilding.",
+        "operationId": "served_unserved_rollups_list",
+        "parameters": [
+          {
+            "description": "Data period in YYYY-MM-DD form. Supply both dates or neither; omission selects latest.",
+            "in": "query",
+            "name": "as_of",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional GEOID or lowercase H3 cell matching the selected level's AREA_KEYS form.",
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "maxLength": 15,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "* `any` - any\n* `wired` - wired\n* `terrestrial` - terrestrial",
+            "in": "query",
+            "name": "flag",
+            "schema": {
+              "default": "wired",
+              "enum": [
+                "any",
+                "wired",
+                "terrestrial"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "description": "* `county` - County\n* `tract` - Census tract\n* `block_group` - Block group\n* `block` - Census block\n* `h3_res8` - H3 resolution-8 cell\n* `place` - Place\n* `county_subdivision` - County subdivision",
+            "in": "query",
+            "name": "level",
+            "required": true,
+            "schema": {
+              "enum": [
+                "county",
+                "tract",
+                "block_group",
+                "block",
+                "h3_res8",
+                "place",
+                "county_subdivision"
+              ],
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "FCC processing date in YYYY-MM-DD form; requires as_of.",
+            "in": "query",
+            "name": "processed_on",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional state FIPS code. For H3, limits contributions rather than cell containment.",
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "maxLength": 2,
+              "minLength": 2,
+              "pattern": "^[0-9]{2}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RollupPage"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestProblem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Problem Details response"
+          }
+        },
+        "tags": [
+          "v1"
+        ]
+      }
+    }
+  }
 }

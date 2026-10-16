@@ -217,15 +217,53 @@ state, the command lists the states it holds. As for a whole release, the
 deletion is one transaction, no query waits for it, and the tables it changed
 are then vacuumed and analyzed. For Ohio, it takes about 15 seconds.
 
-### API foundation
+### Read the data through the API
 
-The shared REST API infrastructure is available for endpoint work. New data
-routes will live under `/api/v1/`; summaries and locations are still being
-implemented in #3 and #26. The current clients continue to use `/api/health/`.
+The public, read-only API exposes loaded releases, Served/Not served summaries,
+and county boundaries. The current client test pages use `/api/health/`;
+location drill-down is planned in #26.
+
+| Route | Response |
+|---|---|
+| `/api/v1/releases/` | Loaded release dates and the states each holds |
+| `/api/v1/served-unserved/rollups/?level=county&state=39` | Ohio county counts, wired 100/20 by default |
+| `/api/v1/geographies/county/?state=39` | County GeoJSON, with GEOIDs matching summary codes |
+
+For example, from PowerShell after loading Ohio:
+
+```powershell
+Invoke-RestMethod 'http://localhost:8000/api/v1/releases/'
+Invoke-RestMethod 'http://localhost:8000/api/v1/served-unserved/rollups/?level=county&state=39'
+Invoke-RestMethod 'http://localhost:8000/api/v1/geographies/county/?state=39'
+```
+
+Summaries support `county`, `tract`, `block_group`, `block`, `h3_res8`, `place`,
+and `county_subdivision`. Add `code` to select one area, and choose
+`flag=any|wired|terrestrial`. `served` is the selected 100/20 flag's count;
+`not_served` is the remaining locations, not a regulatory unserved classification.
+H3 cells on state lines sum all loaded states unless `state` restricts them.
+
+Omitting both `as_of` and `processed_on` selects the latest period, then its
+latest processing version. Supplying dates requires both, in `YYYY-MM-DD` form.
+Responses disclose the resolved release and its states; this is not a promise
+of nationwide coverage. Summary pagination links pin those dates. Each request
+uses one database snapshot, while separate pages are fresh reads and can change
+after replacement or rebuilding.
+
+Collections list stored rollups: a missing area does not mean zero locations or
+zero service. Use a `code` query to distinguish no observations, a state outside
+the release, and unavailable rollups (503). GeoJSON describes boundaries, not
+release coverage; join its feature IDs to summary codes and leave missing
+observations visibly unclassified.
+
+Every collection is paginated with `count`, `next`, and `previous`. Default
+`page_size` is 100, maximum 1,000 for summaries and 100 for releases/boundaries.
+County GeoJSON also has a 5 MiB response cap; request fewer features if exceeded.
+Geometry is separate so tables and flag changes do not download polygons again.
 
 The generated OpenAPI 3.0.3 document is available at
-<http://localhost:8000/api/schema/>. Its business paths are initially empty;
-it describes implemented resources as they are added. The health endpoint
+<http://localhost:8000/api/schema/>. It describes these three implemented
+resources, including validation and errors. The health endpoint
 keeps its separate operational contract.
 
 API views deny access until they explicitly choose a permission policy.
@@ -292,6 +330,8 @@ Architectural and scope decisions are recorded in
 - [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
 - [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 - [0016 — REST API contract and tests](docs/decisions/0016-rest-api-contract-and-tests.md)
+- [0017 — National releases loaded by state](docs/decisions/0017-national-releases-loaded-by-state.md)
+- [0018 — County GeoJSON for initial map output](docs/decisions/0018-county-geojson-map-output.md)
 - [0017 — A release is national, and a data load adds one state](docs/decisions/0017-national-releases-loaded-by-state.md)
 
 The adopted REST API conventions and implementation guidance are in
