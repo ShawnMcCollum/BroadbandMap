@@ -37,13 +37,17 @@ def _validator(document: dict[str, Any], response_schema: dict[str, Any]) -> OAS
     ).evolve(schema=response_schema)
 
 
-def test_production_schema_is_empty_business_contract_and_public(api_client: APIClient) -> None:
+def test_production_schema_matches_business_contract_and_is_public(api_client: APIClient) -> None:
     reset_generator_stats()
     call_command("check_api_schema")
     baseline = json.loads(check_api_schema.BASELINE_PATH.read_text(encoding="utf-8"))
     assert baseline["openapi"] == "3.0.3"
     assert baseline["info"]["title"] == "BroadbandMap API"
-    assert baseline["paths"] == {}
+    assert set(baseline["paths"]) == {
+        "/api/v1/releases/",
+        "/api/v1/served-unserved/rollups/",
+        "/api/v1/geographies/county/",
+    }
     assert not any("test_" in path for path in baseline["paths"])
 
     with override_settings(ROOT_URLCONF="config.urls"):

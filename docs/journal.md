@@ -9,6 +9,49 @@ Newest entries first.
 
 ---
 
+## 2026-10-16 — Exposing stored rollups and county geometry
+
+- Issue #3 builds on the shared API foundation and the multi-state release
+  decision. Release discovery discloses actual states; H3 border cells sum
+  contributions before pagination. Public identifiers remain strings and release
+  dates remain independent of database row IDs.
+- County GeoJSON was selected for the first map. Profiling the source file found
+  88 counties and 122,526 vertices. The implemented full-precision response is
+  3,344,412 bytes; county summary JSON is 12,251 bytes. Separate geometry means
+  dashboard tables and flag changes can request counts without downloading shapes.
+  [ADR 0018](decisions/0018-county-geojson-map-output.md) records the choice.
+- Missing rollups cannot safely mean zero. Collections explicitly list stored
+  observations; a selected code probes for source statuses when its rollup is
+  absent, distinguishing no observations from unavailable derived data. Boundaries
+  alone do not establish coverage in a release.
+- An ordinary atomic block does not make multiple reads one PostgreSQL snapshot.
+  Read endpoints use short read-only repeatable-read transactions. Tests with
+  independent connections verify old-but-consistent responses while replacements,
+  deletion, state additions, and rollup rebuilding commit without reader blocking.
+- The normal loader reconciled 4,542,350 Ohio December 2025 locations. County API
+  totals also matched an independent raw-status aggregate: 4,542,218 any,
+  4,244,855 wired, and 4,393,052 terrestrial locations served at 100/20.
+- Loading June 2025 alongside it reconciled 4,552,967 locations. HTTP checks
+  confirmed that explicit June requests return that total, while default reads
+  and pagination still select December, despite June's later processing date.
+
+Representative local request measurements after loading December 2025:
+
+| Request | Rows returned | Bytes | SQL statements | Elapsed |
+|---|---:|---:|---:|---:|
+| Ohio county summaries | 88 | 12,251 | 9 | 9.5 ms |
+| First H3 page | 100 | 12,779 | 8 | 69.2 ms |
+| H3 page 100 | 100 | 12,920 | 8 | 51.3 ms |
+| First block page, size 1000 | 1000 | 124,277 | 8 | 130.4 ms |
+| Ohio county GeoJSON | 88 | 3,344,412 | 7 | 644.7 ms |
+
+These are individual development-machine observations, not timing guarantees.
+SQL counts include transaction begin/isolation/commit statements. EXPLAIN ANALYZE
+used the existing rollup unique index for summaries and the release/cell index
+for an H3 status lookup. The first H3 row page took about 0.2 ms in PostgreSQL;
+page 100 took about 8.7 ms, while grouped total counts add work to each HTTP
+request. No new index or caching policy was justified by these measurements.
+
 ## 2026-10-14 — Sourcing boundary data
 
 - The FCC file has no geometry, so boundary files had to be sourced before the

@@ -2,12 +2,14 @@
 
 These guidelines define the API conventions adopted by
 [ADR 0016](decisions/0016-rest-api-contract-and-tests.md).
-Issue #62 implements the shared HTTP foundation described here. Business endpoints remain in #3
-and #26; operational API work remains in #15, and multi-state release identity is settled by
+Issue #62 implements the shared HTTP foundation described here. Issue #3 adds release discovery,
+summary reads, and county GeoJSON. Location endpoints remain in #26; operational API work remains
+in #15, and multi-state release identity is settled by
 [ADR 0017](decisions/0017-national-releases-loaded-by-state.md). The writer guard from #45 is
 already implemented and is independent of HTTP access policy.
 
-The resource paths and numerical starting limits below are project guidance for endpoint planning.
+The general resource paths and numerical starting limits below guide endpoint planning;
+section 11 specifies the three implemented read contracts.
 Framework behavior is identified separately where relevant. Endpoint plans settle exact inputs,
 response fields, and implementation details before the corresponding endpoints are built. The
 examples do not imply that these business endpoints already exist.
@@ -27,7 +29,7 @@ backend/
 
 Create a module only when an endpoint needs it. Keep tests with the owning app under its existing
 `tests/` package. `config/urls.py` mounts the `api_v1` namespace at `/api/v1/`;
-`core/api/urls.py` composes the future domain URL configurations. It is initially empty.
+`core/api/urls.py` composes the release, geography, and summary URL configurations.
 
 The implemented shared modules are:
 
@@ -41,7 +43,8 @@ The implemented shared modules are:
 | `schema.py` | Shared problem-response annotations for drf-spectacular |
 | `openapi.json` | Generated, reviewed production schema baseline |
 
-Pagination and release/area metadata helpers are introduced only when an endpoint needs them.
+Shared bounded page-number reads live in `core/api/pagination.py`; request-scoped read snapshots
+live in `core/api/transactions.py`. Release metadata and date validation belong to `bdc/api/`.
 
 Views coordinate request validation, permissions, query selection, pagination, and serialization.
 Reusable read queries belong in a domain module such as `queries.py`; existing `statuses_in`
@@ -65,17 +68,18 @@ releases are separate inputs. Keep the existing `/api/health/` behavior because 
 use it. URL versioning is a project choice supported by
 [DRF's versioning mechanisms](https://www.django-rest-framework.org/api-guide/versioning/).
 
-Illustrative resource families:
+Implemented resources and planned resource families:
 
-| Resource | Proposed route | Responsibility |
+| Resource | Route | Responsibility |
 |---|---|---|
 | Releases | `GET /api/v1/releases/` | Discover loaded periods, processing dates, and geographic coverage |
+| County geometry | `GET /api/v1/geographies/county/?state=39` | Bounded county GeoJSON, implemented in #3 |
 | Area metadata | `GET /api/v1/geographies/{level}/{code}/` | Describe a known area without automatically returning its polygon |
 | Summary counts | `GET /api/v1/served-unserved/rollups/` | Read stored rollups for one release and geographic level |
 | Area locations | `GET /api/v1/served-unserved/locations/` | Read bounded, paginated statuses behind one area |
 
-These families guide later endpoint plans. #3 must settle exact summary selection parameters and map
-output before implementation. No operational HTTP routes are added by the foundation.
+Area metadata and location routes remain proposals. The three implemented read contracts are
+specified in section 11. Operational HTTP routes remain outside these resources.
 
 Use JSON and `snake_case` for ordinary representations. Explicit serializer field lists prevent
 future database fields becoming public accidentally. A `ModelSerializer` is suitable for a direct
@@ -108,8 +112,8 @@ use `fields = '__all__'` for a public contract. See
   processing date; and boundary vintage 2020 where applicable.
 - A known area with no matching locations returns a successful empty list. A valid area key that
   identifies no known area returns 404. Missing rollups must not be silently interpreted as measured
-  zero service: #3 must define how summary coverage distinguishes no observations from unavailable
-  derived data.
+  zero service: section 11 defines how summary coverage distinguishes no observations from
+  unavailable derived data and areas outside a release's states.
 
 Example location request:
 
@@ -281,12 +285,11 @@ Reference:
 
 ## 7. Keep geography representations honest
 
-Ordinary summary and location JSON should omit polygon geometry. Separate geometry representation
-from summary counts so tables do not download large shapes. #3 should compare county GeoJSON
-payloads with the needs of the first map before choosing its initial map format; block-level or
-nationwide tiles remain a later measured decision.
+Ordinary summary and location JSON omit polygon geometry. County GeoJSON is a separate bounded
+resource, following [ADR 0018](decisions/0018-county-geojson-map-output.md). Tables and flag changes
+need not download shapes. Block-level or nationwide tiles remain a later measured decision.
 
-If GeoJSON is selected, use RFC 7946 Feature/FeatureCollection structures, WGS84 longitude/latitude
+For GeoJSON, use RFC 7946 Feature/FeatureCollection structures, WGS84 longitude/latitude
 coordinates, stable feature identifiers, and `application/geo+json`. GeoDjango's serializer is
 useful for geometry conversion, but it is not a substitute for the API's validation, permissions,
 query selection, and response contract.
@@ -360,7 +363,8 @@ and administrator operations accurately.
 `GET /api/schema/` serves OpenAPI JSON anonymously, with HEAD/OPTIONS support and no unsafe
 methods. The provider supports its standard schema query options and OpenAPI JSON media types
 (`application/vnd.oai.openapi+json` and `application/json`). Schema delivery excludes itself from
-generation. Health is also outside this business schema, so its initial `paths` object is empty.
+generation. Health is also outside this business schema. Its `paths` contains the three implemented
+read resources from #3.
 Test-only endpoints exercise shared contracts without appearing in the production document.
 
 Run these commands from the repository root in PowerShell:
@@ -428,10 +432,12 @@ Each endpoint plan includes concrete fixtures and independently stated expected 
 | Performance | Query-count regression checks at more than one page size; no N+1 growth; full-data query plans and measured payload limits |
 | Consumers | React and Streamlit handle documented successes, empty data, validation failures, and restart-required responses |
 
-Use normal transactional database fixtures for ordinary endpoint tests. Use `transaction=True` or
-equivalent true transaction tests and independent connections for commit/visibility scenarios; an
-enclosing test transaction cannot prove those guarantees. Do not use forced authentication as the
-only test of an authentication or CSRF policy.
+Business read endpoints open a read-only repeatable-read transaction before their first data query.
+Their integration tests use `transaction=True` so an enclosing pytest transaction does not prevent
+setting isolation. Shared HTTP tests that do not open these snapshots can use ordinary database
+fixtures. Commit/visibility tests also use independent connections; an enclosing test transaction
+cannot prove those guarantees. Do not use forced authentication as the only test of an
+authentication or CSRF policy.
 
 Keep schema validation and selected response-to-schema checks separate from business assertions. A
 response can match its schema and still count the wrong locations. Avoid testing a query by
@@ -457,3 +463,119 @@ When adding an endpoint, consume the foundation in this order:
 7. Update and review the production schema baseline intentionally, then run the backend and
    affected client checks. Add endpoint-specific data and performance evidence from the matrix
    above rather than treating the foundation tests as coverage of new business queries.
+
+## 11. Implemented public read contracts
+
+All three endpoints permit anonymous GET/HEAD/OPTIONS, reject writes with 405,
+validate singleton inputs strictly, and set `Cache-Control: no-store` on successful
+reads. Each response is evaluated and serialized in a short read-only repeatable-read
+transaction; release identity, state coverage, totals, and page rows see the same
+snapshot. Readers take no writer guard. No transaction spans HTTP requests.
+
+### Releases
+
+`GET /api/v1/releases/` accepts `page` (default 1, minimum 1) and `page_size`
+(default 100, range 1–100). The JSON envelope has `count`, nullable `next` and
+`previous` absolute URLs, and `results`. Results are ordered by descending `as_of`,
+then descending `processed_on`, with these fields:
+
+```json
+{
+  "filing_period": "D25",
+  "as_of": "2025-12-31",
+  "processed_on": "2026-09-29",
+  "states": [{"code": "39", "name": "Ohio", "abbreviation": "OH"}]
+}
+```
+
+State coverage is based on statuses, not on which nationwide boundaries happen
+to be loaded. State entries are ordered by code. The release's surrogate key and
+state polygons are not public fields. An empty catalog returns 200 with empty
+results on page 1. An out-of-range subsequent page returns 404.
+
+### Served/Not served summaries
+
+`GET /api/v1/served-unserved/rollups/` accepts:
+
+| Query input | Meaning |
+|---|---|
+| `level` | Required: `county`, `tract`, `block_group`, `block`, `h3_res8`, `place`, `county_subdivision` |
+| `code` | Optional area identifier, validated against the level's `AREA_KEYS` form |
+| `state` | Optional two-digit state code, limiting contributing rows |
+| `as_of`, `processed_on` | Both strict `YYYY-MM-DD` dates or neither; omission selects latest |
+| `flag` | `any`, `wired`, `terrestrial`; default `wired` |
+| `page` | Integer >= 1; default 1 |
+| `page_size` | Integer 1–1000; default 100 |
+
+A census `code` and `state`, if both provided, must agree. A known state or census
+area must exist in the boundary tables; a known H3 cell has a status in at least
+one loaded release. Unknown but correctly formed keys, an unknown release, and
+no release to resolve as latest are 404. Malformed keys, lone dates, and invalid
+filters are 400.
+
+The envelope has `count`, `next`, `previous`, and `results`, plus:
+
+- `release`: the discovery representation above, including all its states even
+  when the summary is state-filtered;
+- `selection`: `level`, nullable `code`, nullable `state`, and resolved `flag`;
+- `threshold`: `download_mbps: 100`, `upload_mbps: 20`;
+- `boundary_vintage`: 2020 for census levels, null for H3;
+- `summary_coverage`: the semantics below.
+
+Results are ordered by ascending string `code`. Each result includes `locations`,
+`any_100_20`, `wired_100_20`, `terrestrial_100_20`, and the selected flag's `served`
+and `not_served` integer counts. The latter is `locations - served`. H3 rows are
+grouped and summed across contributing states before counting/pagination, so a
+border cell appears once. No `state` means all loaded contributions; selecting
+one state counts only its contribution. No geometry is returned.
+
+`summary_coverage` distinguishes these cases:
+
+| Value | Meaning |
+|---|---|
+| `stored_rollups_only` | Collection of stored rows; omitted areas have no implied zero or completeness guarantee |
+| `observed` | A selected code has stored rollup counts |
+| `no_observations` | A selected known area has neither a rollup nor matching statuses in the selected release/filter |
+| `outside_release_coverage` | A selected area's state, or an explicit H3 state filter, is absent from the release |
+
+For a selected known code without a rollup, an indexed status existence probe
+distinguishes absence of observations from missing derived data. Existing statuses
+without that rollup yield 503 `service_unavailable`. The successful no-observations
+response has empty results rather than invented zero counts. An H3 cell without
+a state filter does not assert statewide coverage and uses `no_observations`
+when absent from the selected release. Sparse collection reads do not scan all
+statuses to certify rollup completeness; use `code` to investigate an omitted area.
+
+Every pagination link contains the resolved dates, selection, flag, and page size.
+A new latest release cannot switch a traversal to a different date pair. Replacement,
+deletion, or rebuilding between page requests can change results; page-number
+summaries provide no cross-request snapshot or generation check. Restart a summary
+traversal when a coherent multi-page export is needed after such a change. The
+stronger cursor contract for location drill-down remains issue #26.
+
+### County GeoJSON
+
+`GET /api/v1/geographies/county/?state=39` requires a known two-digit `state`.
+Optional `page` defaults to 1 (minimum 1); `page_size` defaults to 100 (range 1–100).
+Counties are ordered by GEOID. An empty known state's first page succeeds; unknown
+states and subsequent pages beyond the collection return 404.
+
+The response is `application/geo+json`, a FeatureCollection with `features` and
+foreign members `count`, `next`, `previous`, `state`, and `boundary_vintage: 2020`.
+Each Feature has a string county GEOID `id`, properties `{code, name}`, and WGS84
+MultiPolygon `geometry`. IDs equal summary codes. Geometry is independent of data
+releases, so a boundary feature must not be treated as evidence of observations.
+Coordinates use longitude/latitude order, RFC 7946 ring winding, and 15 decimal
+places of precision; no simplification or `crs` member is introduced.
+
+The response cap is 5 MiB, including the envelope and negotiated indentation.
+PostgreSQL checks the selected geometry size before transferring it into Python;
+the completed representation is checked again. Exceeding the cap returns 400
+`validation_error` with `/page_size` leaf code `geometry_payload_too_large`.
+Request fewer features. If a single county exceeds the cap, this representation
+cannot serve it; pagination alone cannot solve that case. See
+[ADR 0018](decisions/0018-county-geojson-map-output.md).
+
+GeoJSON successes use the registered GeoJSON media type. Requesting only
+`application/json` from this resource yields 406; use `application/geo+json` or
+`*/*`. All error responses still use `application/problem+json`.

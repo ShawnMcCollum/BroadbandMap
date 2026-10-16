@@ -122,9 +122,16 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "BroadbandMap API",
     "DESCRIPTION": (
-        "Versioned HTTP API foundation. Business resources are added in issues #3 and #26."
+        "Public release discovery, Served/Not served summaries, and county GeoJSON. "
+        "Location drill-down is planned in issue #26."
     ),
     "VERSION": "1.0.0",
     "OAS_VERSION": "3.0.3",
     "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {
+        "ProblemType": ["about:blank"],
+        "GeoJSONCollectionType": ["FeatureCollection"],
+        "GeoJSONFeatureType": ["Feature"],
+        "GeoJSONGeometryType": ["MultiPolygon"],
+    },
 }
