@@ -2,9 +2,9 @@
 
 These guidelines define the API conventions adopted by
 [ADR 0016](decisions/0016-rest-api-contract-and-tests.md).
-They apply as business endpoints are implemented in #3 and #26; operational API work is tracked in
-#15/#45,
-and multi-state release identity in #54.
+Issue #62 implements the shared HTTP foundation described here. Business endpoints remain in #3
+and #26; operational API work remains in #15, and multi-state release identity in #54. The writer
+guard from #45 is already implemented and is independent of HTTP access policy.
 
 The resource paths and numerical starting limits below are project guidance for endpoint planning.
 Framework behavior is identified separately where relevant. Endpoint plans settle exact inputs,
@@ -18,14 +18,29 @@ Keep models, domain rules, and database query functions in their existing Django
 
 ```text
 backend/
-  core/api/               # shared errors, pagination, and request conventions
+  core/api/               # implemented shared HTTP infrastructure
   bdc/api/                # release discovery and release input validation
   geography/api/          # area metadata and later map representations
   served_unserved/api/    # summary and location endpoints
 ```
 
 Create a module only when an endpoint needs it. Keep tests with the owning app under its existing
-`tests/` package. `config/urls.py` composes the app URL configurations.
+`tests/` package. `config/urls.py` mounts the `api_v1` namespace at `/api/v1/`;
+`core/api/urls.py` composes the future domain URL configurations. It is initially empty.
+
+The implemented shared modules are:
+
+| Module under `core/api/` | Responsibility |
+|---|---|
+| `permissions.py` | Deny-all default and administrator/operation permission pattern |
+| `validation.py` | Strict singleton query serializers |
+| `problems.py` | Safe Problem Details payloads and DRF exception translation |
+| `middleware.py` | API boundary errors and request correlation |
+| `serializers.py` | Explicit Problem, ValidationProblem, and FieldError schema components |
+| `schema.py` | Shared problem-response annotations for drf-spectacular |
+| `openapi.json` | Generated, reviewed production schema baseline |
+
+Pagination and release/area metadata helpers are introduced only when an endpoint needs them.
 
 Views coordinate request validation, permissions, query selection, pagination, and serialization.
 Reusable read queries belong in a domain module such as `queries.py`; existing `statuses_in`
@@ -59,7 +74,7 @@ Illustrative resource families:
 | Area locations | `GET /api/v1/served-unserved/locations/` | Read bounded, paginated statuses behind one area |
 
 These families guide later endpoint plans. #3 must settle exact summary selection parameters and map
-output before implementation. No operational HTTP routes are added by #33.
+output before implementation. No operational HTTP routes are added by the foundation.
 
 Use JSON and `snake_case` for ordinary representations. Explicit serializer field lists prevent
 future database fields becoming public accidentally. A `ModelSerializer` is suitable for a direct
@@ -109,13 +124,24 @@ cross-field rules. Restrict filtering and ordering to documented choices. Reject
 and repeated singleton parameters explicitly: ordinary serializers do not establish this policy
 automatically. Catching `flga=wired` is more useful than silently ignoring it.
 
+Use `core.api.validation.StrictQuerySerializer` for endpoint query serializers. It rejects unknown
+names and repeated declared parameters before ordinary field validation, including a repeated value
+such as `limit=1&limit=1`. Read-only serializer fields are not accepted as query inputs. Invoke it
+with `data=request.query_params`, then call `is_valid(raise_exception=True)`. Put the endpoint's
+fields, defaults, bounds, and cross-field rules in its owning app. Plain dictionary input remains
+supported, but only a multi-value input such as QueryDict can reveal repeated names.
+
+Unknown names receive the field code `unknown_parameter`; repeated singleton names receive
+`repeated_parameter`. Name/multiplicity errors are reported deterministically by field name.
+Endpoints accepting repeated list parameters require an explicit extension to this convention.
+
 Proposed semantics:
 
 | Status | Meaning |
 |---|---|
 | 200 | Successful read, including an empty filtered collection |
 | 400 | Malformed dates, incomplete date pair, invalid level/code form, invalid filter, or malformed cursor |
-| 403 | An operation denied under the planned session-based administrator access model |
+| 403 | An operation denied under session-based administrator access |
 | 404 | Unknown release or area; no loaded release when a latest release is requested |
 | 405 | Unsupported method on a known read-only resource |
 | 409 | Pagination cannot continue because its underlying release was replaced or deleted |
@@ -132,6 +158,63 @@ not cover every Django failure.
 Do not expose exception traces, SQL, or local paths in responses. Log unexpected failures with a
 request correlation identifier. Expected validation failures are not server errors. The existing
 health response is an explicit operational exception to the new business error format.
+
+The implemented validation response has this form:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "Request validation failed.",
+  "code": "validation_error",
+  "request_id": "ceef3c797be74cef8f2cdba04463ad2ce",
+  "errors": [
+    {
+      "pointer": "/limit",
+      "code": "invalid",
+      "message": "A valid integer is required."
+    }
+  ]
+}
+```
+
+`type`, `title`, `status`, `detail`, `code`, and `request_id` are required. The title is the HTTP
+reason phrase; the status matches the response. Validation adds a nonempty `errors` list, while
+other problems omit it. Each field error contains a JSON Pointer into the serializer input, a
+stable leaf code, and a message. Multiple messages for a field retain its pointer; nested input
+arrays include their index. Cross-field errors use `/non_field_errors`, root errors use the empty
+pointer, and pointer segments escape `~` and `/` according to RFC 6901.
+
+The shared top-level codes are:
+
+| HTTP | Codes |
+|---|---|
+| 400 | `validation_error`, `parse_error`, `bad_request` |
+| 403 | `not_authenticated`, `authentication_failed`, `permission_denied` |
+| 404 / 405 / 406 / 415 | `not_found`, `method_not_allowed`, `not_acceptable`, `unsupported_media_type` |
+| 429 | `throttled` (no throttle policy is configured yet) |
+| 500 | `internal_error` |
+| 503 | `service_unavailable` for explicit `ServiceUnavailable` exceptions |
+| Other errors | `http_error` for other 4xx statuses; generic `internal_error` for other 5xx statuses |
+
+Raise DRF exceptions, including serializer validation exceptions, rather than constructing endpoint
+error bodies. Use `core.api.problems.ServiceUnavailable` only for a recognized temporary failure;
+arbitrary database exceptions remain unexpected failures. Nonvalidation details are fixed, safe
+messages, including `An unexpected error occurred.` for unexpected failures.
+
+The boundary covers `/api` and `/api/...`, including unknown routes, Django view errors, rendering
+failures, and errors returned by inner middleware. It sanitizes errors with DEBUG on and off and
+preserves their HTTP status, relevant headers, and cookies. Problem JSON is independent of the
+successful response renderer, including when Accept negotiation fails. `/api/health/` retains its
+existing JSON and status contract; non-API routes retain Django behavior. Successful responses and
+normal redirects pass through. Failures before Django receives a request or after streaming has
+started are outside this boundary.
+
+Each covered request gets a fresh UUID4 hex value in `X-Request-ID`; problems carry the same value
+in `request_id`. Incoming identifiers are ignored. Unexpected failures are correlated in server
+logs without including query strings in the shared log message. Expected validation and permission
+failures do not create shared-infrastructure error logs.
 
 References: [HTTP semantics](https://www.rfc-editor.org/rfc/rfc9110.html),
 [Problem Details](https://www.rfc-editor.org/rfc/rfc9457.html),
@@ -217,10 +300,27 @@ Set an explicit restrictive default permission policy and opt public GET/HEAD/OP
 `AllowAny`. Public data views can disable authentication processing when they have no user-specific
 behavior. Public resources expose no write methods, even to staff users.
 
+The configured default is `core.api.permissions.DenyAll`, which denies every caller, including
+staff and superusers. A public read explicitly declares:
+
+```python
+permission_classes = [AllowAny]
+authentication_classes = []
+http_method_names = ["get", "head", "options"]
+```
+
 Keep operational actions in authenticated Django admin or existing commands until #15 needs an API.
 Any later operational endpoint requires authentication, staff status, and the relevant operation
 permission. `IsAdminUser` alone means `is_staff`; it does not check a particular model or operation
 permission. Do not confuse authenticated users with administrators.
+
+For a future operation, explicitly select
+`core.api.permissions.IsAdministratorWithOperationPermission` and declare a nonempty
+`required_operation_permissions` tuple of Django permission names. It checks authentication,
+active status, staff status, and `user.has_perms(...)`; missing, empty, or invalid declarations deny
+access. Django's normal superuser permission semantics apply. The owning operation plan chooses
+its permissions; the foundation creates none and adds no operation route. Retain the configured
+session authentication and test unsafe requests using a real session and CSRF token.
 
 Use Django session authentication for browser-based administrator operations initially and retain
 CSRF protection for unsafe requests. A public GET API does not require introducing JWTs or API keys.
@@ -238,9 +338,14 @@ References: [DRF permissions](https://www.django-rest-framework.org/api-guide/pe
 
 ## 9. Generate and review OpenAPI with the implementation
 
-Use DRF with `drf-spectacular` when #3 introduces the business API. DRF's built-in OpenAPI
+The foundation installs DRF with `drf-spectacular`. DRF's built-in OpenAPI
 generation is deprecated and its documentation recommends this replacement. This updates ADR 0002's
 tooling assumption without changing its Django/DRF architecture.
+
+The dependency constraints keep DRF and its typing stubs on the matched 3.16 line alongside Django
+5.2 LTS and django-stubs 5.2. The newer typing line requires newer Django stubs; review these
+constraints together when upgrading rather than independently advancing one package. Strict mypy
+checking remains enabled with the Django and DRF plugins.
 
 Generate an OpenAPI 3 schema from the implementation, supplementing inference with explicit query
 serializers, error responses, cursor envelopes, examples, and stable operation IDs. Start with
@@ -248,11 +353,45 @@ OpenAPI 3.0.3 for broad client tooling compatibility; revisiting that version re
 clients. Document identifiers as strings, geographic enumerations, date formats, public security,
 and administrator operations accurately.
 
-Use `python manage.py spectacular --file /tmp/broadbandmap-openapi.yaml --validate --fail-on-warn`
-in the container once the dependency exists. Schema generation and validation become part of local
-checks. Review a generated schema diff with endpoint changes, with a checked-in baseline updated
-intentionally. Code remains the implementation source; do not maintain a second independent
-handwritten schema.
+`GET /api/schema/` serves OpenAPI JSON anonymously, with HEAD/OPTIONS support and no unsafe
+methods. The provider supports its standard schema query options and OpenAPI JSON media types
+(`application/vnd.oai.openapi+json` and `application/json`). Schema delivery excludes itself from
+generation. Health is also outside this business schema, so its initial `paths` object is empty.
+Test-only endpoints exercise shared contracts without appearing in the production document.
+
+Run these commands from the repository root in PowerShell:
+
+```powershell
+# Rebuild after dependency changes.
+docker compose build backend
+
+# Validate and compare the production schema; differences fail without changing the baseline.
+docker compose run --rm backend python manage.py check_api_schema
+
+# Accept an intentional contract change, then review the generated diff.
+docker compose run --rm backend python manage.py check_api_schema --update
+git diff -- backend/core/api/openapi.json
+
+# Export a validated standalone document inside the temporary container.
+docker compose run --rm backend python manage.py spectacular --format openapi-json --file /tmp/broadbandmap-openapi.json --validate --fail-on-warn
+
+# Run focused HTTP/health coverage, then all backend checks.
+docker compose run --rm backend pytest core/tests/api core/tests/test_health.py
+docker compose run --rm backend sh check.sh
+```
+
+`check_api_schema` generates into a temporary directory with validation and warnings treated as
+failures. It compares the entire parsed document with `core/api/openapi.json`, ignoring only object
+key order and formatting. It prints a unified diff and fails on drift; only `--update` writes the
+baseline. `check.sh` includes this check before pytest. Code remains the implementation source;
+do not maintain a second independent handwritten schema or generate the baseline from test routes.
+
+Annotate endpoint methods with explicit operation IDs, query/success serializers, and relevant
+errors. Merge `core.api.schema.problem_responses(*statuses)` into the responses passed to
+`extend_schema`; it sets `application/problem+json` and uses a disjoint union of Problem and
+ValidationProblem for 400, since malformed JSON does not have field errors. Other error statuses
+use Problem. These components appear when referenced by an implemented endpoint; unused
+components are not appended to the production schema.
 
 Within v1, preserve field meanings, types, defaults, and error codes. Add optional fields carefully;
 clients should ignore unknown response fields. Adding enum values still requires consumer review
@@ -301,3 +440,16 @@ current local-check policy and does not introduce CI.
 
 References: [DRF testing](https://www.django-rest-framework.org/api-guide/testing/),
 [Django test tools and query assertions](https://docs.djangoproject.com/en/5.2/topics/testing/tools/).
+
+When adding an endpoint, consume the foundation in this order:
+
+1. Settle its contract and owning domain app; add its route through the `api_v1` namespace.
+2. Choose explicit access and method policies; retain session/CSRF enforcement for operations.
+3. Validate query input with StrictQuerySerializer and keep domain validation in the owning app.
+4. Reuse domain queries and explicit serializers; raise exceptions for shared error translation.
+5. Annotate success, inputs, security, and applicable problem responses with drf-spectacular.
+6. Test actual responses against the generated schemas using the APIClient/contract helpers in
+   `core/tests/api/`, alongside independently stated behavior assertions and real session checks.
+7. Update and review the production schema baseline intentionally, then run the backend and
+   affected client checks. Add endpoint-specific data and performance evidence from the matrix
+   above rather than treating the foundation tests as coverage of new business queries.

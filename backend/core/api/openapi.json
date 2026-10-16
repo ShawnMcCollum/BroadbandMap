@@ -1,0 +1,10 @@
+{
+  "components": {},
+  "info": {
+    "description": "Versioned HTTP API foundation. Business resources are added in issues #3 and #26.",
+    "title": "BroadbandMap API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {}
+}

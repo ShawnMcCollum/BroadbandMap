@@ -178,6 +178,27 @@ commits, and no query waits for it. The command then vacuums and analyzes the
 tables it changed, so the next data load reuses their space. For Ohio, it
 takes about ten seconds.
 
+### API foundation
+
+The shared REST API infrastructure is available for endpoint work. New data
+routes will live under `/api/v1/`; summaries and locations are still being
+implemented in #3 and #26. The current clients continue to use `/api/health/`.
+
+The generated OpenAPI 3.0.3 document is available at
+<http://localhost:8000/api/schema/>. Its business paths are initially empty;
+it describes implemented resources as they are added. The health endpoint
+keeps its separate operational contract.
+
+API views deny access until they explicitly choose a permission policy.
+Public data views allow anonymous reads and expose no write methods. Future
+operations require an active staff user with the declared operation
+permissions, using session authentication and CSRF protection.
+
+API errors use Problem Details JSON, with stable codes, structured validation
+errors, and a request identifier for diagnosing unexpected failures. The
+[API guidelines](docs/api-guidelines.md) explain the shared modules, error
+contract, query validation, and how to add an endpoint.
+
 ### Checks
 
 Formatting, lint, type checks and tests run inside the containers:
@@ -187,6 +208,22 @@ docker compose run --rm backend sh check.sh
 docker compose run --rm --no-deps dashboard sh check.sh
 docker compose run --rm --no-deps web pnpm check
 ```
+
+The backend checks also generate and validate OpenAPI, treating warnings as
+failures, and compare it with the reviewed baseline in
+`backend/core/api/openapi.json`. To accept an intentional API contract change,
+generate the baseline and review its diff before rerunning checks:
+
+```powershell
+docker compose run --rm backend python manage.py check_api_schema --update
+git diff -- backend/core/api/openapi.json
+docker compose run --rm backend python manage.py check_api_schema
+```
+
+After dependency changes, rebuild the backend image with
+`docker compose build backend` before running its checks. The
+[API guidelines](docs/api-guidelines.md#9-generate-and-review-openapi-with-the-implementation)
+include the standalone schema export command and focused API test command.
 
 The full-data suite loads the real files in `data/raw/` and checks the result
 against independent readers of those files. It takes about 12 minutes:
@@ -214,11 +251,11 @@ Architectural and scope decisions are recorded in
 - [0012 — A location's block and H3 cell are stored per release](docs/decisions/0012-location-placement-per-release.md)
 - [0013 — A data load adds one release](docs/decisions/0013-release-scoped-data-loads.md)
 - [0014 — Vacuum and analyze after each data load](docs/decisions/0014-vacuum-after-each-data-load.md)
+- [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 - [0016 — REST API contract and tests](docs/decisions/0016-rest-api-contract-and-tests.md)
 
 The adopted REST API conventions and implementation guidance are in
 [docs/api-guidelines.md](docs/api-guidelines.md).
-- [0015 — One writer of the loaded tables at a time](docs/decisions/0015-one-writer-at-a-time.md)
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
