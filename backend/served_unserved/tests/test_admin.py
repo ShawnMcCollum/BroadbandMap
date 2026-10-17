@@ -10,6 +10,7 @@ from django.urls import reverse
 from bdc.models import Release
 from core.admin import CappedCountPaginator
 from geography.models import Block, State
+from geography.tests.helpers import boundary_fields
 from served_unserved.admin import ServedStatusAdmin
 from served_unserved.models import Rollup, ServedStatus
 
@@ -34,13 +35,15 @@ def test_changelist_shows_the_block_and_cell(
     assert "882a91ae3bfffff" in response.text
 
 
-def add_status(release: Release, block: Block, location_id: int) -> ServedStatus:
-    """A status of the location in the release, served by every technology."""
+def add_status(
+    release: Release, block: Block, location_id: int, h3_res8: str = "882a91ae3bfffff"
+) -> ServedStatus:
+    """A status of the location in the release, block and cell, served by every technology."""
     return ServedStatus.objects.create(
         release=release,
         location_id=location_id,
         block=block,
-        h3_res8="882a91ae3bfffff",
+        h3_res8=h3_res8,
         any_100_20=True,
         wired_100_20=True,
         terrestrial_100_20=True,
@@ -233,22 +236,89 @@ def test_search_by_location_id_within_one_release(
     assert list(response.context["cl"].result_list) == [j25_status]
 
 
-# Nothing indexes location_id alone, so each query of the search names the releases, for the
-# unique (release, location_id) index (ADR 0021).
-def test_search_by_location_id_names_the_releases(
-    admin_client: Client, served_status: ServedStatus, j25_status: ServedStatus
-) -> None:
-    with CaptureQueriesContext(connection) as queries:
-        admin_client.get(reverse(CHANGELIST), {"q": "1000338835"})
+@pytest.fixture
+def elsewhere(served_status: ServedStatus, block: Block) -> ServedStatus:
+    """A status in the served_status fixture's release, in another block and another cell."""
+    other_block = Block.objects.create(
+        geoid="390490001101001",
+        name="Block 1001",
+        block_group=block.block_group,
+        place=block.place,
+        county_subdivision=block.county_subdivision,
+        population_2020=12,
+        housing_units_2020=5,
+        urban_rural="U",
+        **boundary_fields(),
+    )
+    return add_status(served_status.release, other_block, 1000000002, h3_res8="882a91ae3a7ffff")
 
-    searches = [
-        query["sql"]
-        for query in queries.captured_queries
-        if '"location_id" = 1000338835' in query["sql"]
-    ]
+
+AREA_TERMS = pytest.mark.parametrize(
+    "term", ["390490001101000", "882a91ae3bfffff"], ids=["block", "cell"]
+)
+
+
+@AREA_TERMS
+@pytest.mark.usefixtures("elsewhere")
+def test_search_by_area_finds_its_statuses_in_every_release(
+    admin_client: Client, served_status: ServedStatus, j25_status: ServedStatus, term: str
+) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"q": term})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [served_status, j25_status]
+    assert response.context["cl"].result_count == 2
+
+
+@AREA_TERMS
+@pytest.mark.usefixtures("elsewhere", "j25_status")
+def test_search_by_area_within_one_release(
+    admin_client: Client, served_status: ServedStatus, term: str
+) -> None:
+    response = admin_client.get(
+        reverse(CHANGELIST), {"q": term, "release__id__exact": str(served_status.release_id)}
+    )
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [served_status]
+
+
+# Nothing indexes location_id, block_id or h3_res8 alone, so each query of the search names the
+# releases, for an index that leads with the release (ADRs 0021 and 0023).
+@pytest.mark.parametrize(
+    ("term", "condition"),
+    [
+        ("1000338835", '"location_id" = 1000338835'),
+        ("390490001101000", "\"block_id\" = '390490001101000'"),
+        ("882a91ae3bfffff", "\"h3_res8\" = '882a91ae3bfffff'"),
+    ],
+    ids=["location", "block", "cell"],
+)
+@pytest.mark.usefixtures("served_status", "j25_status")
+def test_search_names_the_releases(admin_client: Client, term: str, condition: str) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(reverse(CHANGELIST), {"q": term})
+
+    searches = [query["sql"] for query in queries.captured_queries if condition in query["sql"]]
     # The page's count and its rows
     assert len(searches) >= 2
     assert all('"release_id" IN (' in sql for sql in searches)
+
+
+# A block or a cell without statuses finds nothing. So does a cell index in capitals, which is not
+# a cell's form, and a county GEOID, which is read as a location ID.
+@pytest.mark.parametrize(
+    "term",
+    ["390490001109999", "882a91ae38fffff", "882A91AE3BFFFFF", "39049"],
+    ids=["block", "cell", "capitals", "county"],
+)
+def test_search_for_an_area_without_statuses_finds_nothing(
+    admin_client: Client, served_status: ServedStatus, term: str
+) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"q": term})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == []
 
 
 # "²" passes str.isdigit() but int() rejects it.
