@@ -9,6 +9,41 @@ Newest entries first.
 
 ---
 
+## 2026-10-16 — React shell and release selection
+
+- Issue #72 replaces the React health-only landing page with the approved shell,
+  date-pair and technology controls, loaded-state coverage and a real, bounded
+  county-summary readiness check. The county map, analytical views and AI forms
+  remain with their feature issues; diagnostics keeps the existing health API.
+- A single root selection owner prevents dates and flags from drifting between
+  consumers. Complete release discovery keeps distinct processing versions
+  selectable. Abort signals reduce obsolete work, while request and selection
+  identities prevent late results from appearing beneath newer labels, including
+  refresh, route re-entry and a return to an earlier selection.
+- The owner selected the bounded readiness read and approved the concrete
+  [implementation plan](plans/issue-72-react-shell.md) before implementation.
+  No dependency or persistent browser cache is needed for this slice.
+- A real proxy check found that Vite's string target enables `changeOrigin`:
+  Django emitted `http://backend:8000` pagination links even for web-origin
+  requests. The owner approved the minimal explicit `changeOrigin: false`
+  correction. Pagination now preserves the browser Host and port; the client
+  still rejects unexpected origins and endpoint paths rather than rewriting them.
+- Real Microsoft Edge checks covered release/flag request parameters, a fetched
+  next release page through the web proxy, skip-link and native-select keyboard
+  behavior, route heading focus, Back selection retention, diagnostics and
+  same-tab dashboard navigation. Widths 1280/390/320 and 200% text resizing had
+  no body overflow. Diagnostics correctly showed the existing stopped worker;
+  no services or source data were changed to fabricate a health scenario.
+- Docker web checks passed formatting, lint, TypeScript and 64 tests; the
+  production build and Compose validation passed. Final review corrected stale
+  coverage metadata, old-result/new-404 precedence and malformed-response request
+  IDs, with focused regressions. Full outcomes are recorded in the plan. Browser
+  success uses the existing API; exceptional coverage, malformed responses and
+  ignored-abort races use fixtures. This does not claim map, authentication or
+  complete accessibility verification.
+
+---
+
 ## 2026-10-16 — Paging through the locations behind a summary
 
 - Issue #26 reuses the summary API's geography rules and release metadata for

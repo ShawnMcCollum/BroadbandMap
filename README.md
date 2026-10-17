@@ -51,7 +51,7 @@ loaded data is kept.
 
 | Service | URL | What it shows |
 |---------|-----|---------------|
-| Web (React) | <http://localhost:5173> | **Test page:** stack connection check |
+| Web (React) | <http://localhost:5173> | Ohio map shell and release readiness |
 | Dashboard (Streamlit) | <http://localhost:8501> | **Test page:** stack connection check |
 | API (Django) | <http://localhost:8000/api/health/> | Health of PostGIS, Redis and the Celery worker, as JSON |
 
@@ -65,9 +65,14 @@ loaded data is kept.
    dashboard-1  |   You can now view your Streamlit app in your browser.
    ```
 
-2. Open the web test page: <http://localhost:5173>
+2. Open the web app: <http://localhost:5173>. It discovers loaded releases and
+   checks whether the selected Ohio county-summary endpoint responds. This is
+   a bounded first-page readiness check; it does not render county data or
+   establish that every county has a summary. Diagnostics at
+   [Diagnostics](http://localhost:5173/#/diagnostics) retains the API/PostGIS/Redis/worker
+   health check.
 3. Open the dashboard test page: <http://localhost:8501>
-4. Both pages should show four checks:
+4. The dashboard test page should show four checks:
 
    ```text
    ✓ API
@@ -75,6 +80,24 @@ loaded data is kept.
    ✓ Redis
    ✓ Celery worker
    ```
+
+The web navigation includes [Map](http://localhost:5173/#/map), Analyst dashboard,
+[Ask (stub)](http://localhost:5173/#/ask) and
+[AI settings](http://localhost:5173/#/settings/ai). The Ask and AI settings routes
+explain that their forms are not available yet; Diagnostics is in the footer.
+The dashboard opens in the same tab with its default filters. For a deployment
+where the browser cannot reach `localhost`, set `VITE_DASHBOARD_URL` to the
+browser-reachable dashboard base URL (HTTP or HTTPS, without credentials,
+query or fragment). The default follows `DASHBOARD_PORT`. Restart or rebuild
+the web service after changing Vite environment values; they are read when the
+frontend starts/builds.
+
+The shell starts with the latest loaded data period and processing date,
+Ohio, and the Wired flag. Different processings remain selectable. Refresh and
+returning to Map retain the selected date pair and flag while making fresh
+reads. A disappeared release requires a new selection; a release without Ohio
+shows that explicitly. API data stays in transient memory, with no browser
+storage or persistent cache.
 
 #### If something shows ✗
 
@@ -220,8 +243,9 @@ are then vacuumed and analyzed. For Ohio, it takes about 15 seconds.
 ### Read the data through the API
 
 The public, read-only API exposes loaded releases, Served/Not served summaries,
-and county boundaries. The current client test pages use `/api/health/`;
-location drill-down uses signed cursors that detect release changes.
+and county boundaries. The React shell reads releases and a bounded county
+summary page; Diagnostics and the current dashboard use `/api/health/`.
+Location drill-down uses signed cursors that detect release changes.
 
 | Route | Response |
 |---|---|
@@ -408,8 +432,10 @@ the [frontend design](docs/plans/frontend-design.md), with
 [responsive wireframes](docs/plans/frontend-wireframes.html) that open directly
 in a browser. The [frontend guidelines](docs/frontend-guidelines.md) collect
 shared labels, selection/error behavior, accessibility, and implementation
-boundaries. These documents define planned screens; the current client pages remain
-stack checks until the following frontend issues are implemented.
+boundaries. The React shell now implements release selection and readiness as
+described in the [Issue #72 plan](docs/plans/issue-72-react-shell.md). The county
+map, analyst workflows, and AI forms remain planned; the dashboard is still a
+stack check.
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
