@@ -1,7 +1,8 @@
 import re
 
 from django.contrib import admin
-from django.db.models import QuerySet
+from django.contrib.admin.options import IncorrectLookupParameters
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 
 from bdc.models import Release
@@ -26,6 +27,41 @@ def status_lookup(term: str) -> dict[str, object] | None:
     return None
 
 
+class ServiceFilter(admin.SimpleListFilter):
+    """Filters the statuses by the narrowest group of technologies with 100/20 Mbps service.
+
+    The check constraints nest the three flags: wired service implies terrestrial, and
+    terrestrial implies any. A status therefore falls in exactly one of these categories. Each is
+    selected by the fewest flags that set it apart, so that the planner's row estimates hold and
+    "Not served" reads the partial index servedstatus_not_served (ADR 0022, decision 7).
+    """
+
+    title = "100/20 Mbps service"
+    parameter_name = "service"
+    categories = {
+        "wired": ("Wired", Q(wired_100_20=True)),
+        "terrestrial": ("Terrestrial, not wired", Q(terrestrial_100_20=True, wired_100_20=False)),
+        "any": ("Any technology, not terrestrial", Q(any_100_20=True, terrestrial_100_20=False)),
+        "none": ("Not served", Q(any_100_20=False)),
+    }
+
+    def lookups(
+        self, request: HttpRequest, model_admin: "admin.ModelAdmin[ServedStatus]"
+    ) -> list[tuple[str, str]]:
+        return [(value, label) for value, (label, _) in self.categories.items()]
+
+    def queryset(
+        self, request: HttpRequest, queryset: QuerySet[ServedStatus]
+    ) -> QuerySet[ServedStatus]:
+        value = self.value()
+        if value is None:
+            return queryset
+        if value not in self.categories:
+            raise IncorrectLookupParameters(f"Unknown 100/20 Mbps service category: {value}")
+        _, condition = self.categories[value]
+        return queryset.filter(condition)
+
+
 @admin.register(ServedStatus)
 class ServedStatusAdmin(ReadOnlyModelAdmin):
     # block_id shows the GEOID without fetching each block and its geometry.
@@ -38,7 +74,9 @@ class ServedStatusAdmin(ReadOnlyModelAdmin):
         "wired_100_20",
         "terrestrial_100_20",
     )
-    list_filter = ("release", "any_100_20", "wired_100_20", "terrestrial_100_20")
+    # One filter of the four service categories the check constraints allow, rather than a filter
+    # per flag, which would offer combinations that match nothing (ADR 0022, decision 7)
+    list_filter = ("release", ServiceFilter)
     list_select_related = ("release",)
     # The statuses are listed by release ID, then location ID (ServedStatus.Meta.ordering), the
     # order of the unique (release, location_id) index. No column sorts the list, since no index
