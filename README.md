@@ -51,7 +51,7 @@ loaded data is kept.
 
 | Service | URL | What it shows |
 |---------|-----|---------------|
-| Web (React) | <http://localhost:5173> | Ohio map shell and release readiness |
+| Web (React) | <http://localhost:5173> | Ohio county map, summaries and county detail |
 | Dashboard (Streamlit) | <http://localhost:8501> | **Test page:** stack connection check |
 | API (Django) | <http://localhost:8000/api/health/> | Health of PostGIS, Redis and the Celery worker, as JSON |
 
@@ -66,9 +66,9 @@ loaded data is kept.
    ```
 
 2. Open the web app: <http://localhost:5173>. It discovers loaded releases and
-   checks whether the selected Ohio county-summary endpoint responds. This is
-   a bounded first-page readiness check; it does not render county data or
-   establish that every county has a summary. Diagnostics at
+   shows Ohio county Served / Not served (100/20 Mbps) summaries on an
+   interactive map and a readable table. Select a county by clicking the map,
+   using the County selector, or choosing its table button. Diagnostics at
    [Diagnostics](http://localhost:5173/#/diagnostics) retains the API/PostGIS/Redis/worker
    health check.
 3. Open the dashboard test page: <http://localhost:8501>
@@ -92,12 +92,28 @@ query or fragment). The default follows `DASHBOARD_PORT`. Restart or rebuild
 the web service after changing Vite environment values; they are read when the
 frontend starts/builds.
 
-The shell starts with the latest loaded data period and processing date,
+The map starts with the latest loaded data period and processing date,
 Ohio, and the Wired flag. Different processings remain selectable. Refresh and
 returning to Map retain the selected date pair and flag while making fresh
 reads. A disappeared release requires a new selection; a release without Ohio
 shows that explicitly. API data stays in transient memory, with no browser
 storage or persistent cache.
+
+The legend shows Served share in five fixed percentage bands. A county without
+a summary stays hatched and unclassified; it is never assigned zero service.
+Selecting it checks whether it has no observations, is outside the release,
+or has unavailable summaries. Gray polygons while loading or after an error
+have no current classification. Counts appear only after every summary page
+has loaded successfully.
+
+Changing release or technology reuses the loaded boundaries and map camera;
+Refresh rereads boundaries and the current data. County selection survives while
+the county remains valid. Hover is a temporary preview. Fit Ohio restores the
+state view. If WebGL is unavailable, the selector, table and detail remain usable;
+if geometry fails, observed summaries still appear with their GEOIDs. The first
+map uses local county geometry without external tiles, an account or API key.
+The bundled MapLibre renderer's [license](web/public/maplibre-LICENSE.txt) is
+also linked from the map.
 
 #### If something shows ✗
 
@@ -243,8 +259,8 @@ are then vacuumed and analyzed. For Ohio, it takes about 15 seconds.
 ### Read the data through the API
 
 The public, read-only API exposes loaded releases, Served/Not served summaries,
-and county boundaries. The React shell reads releases and a bounded county
-summary page; Diagnostics and the current dashboard use `/api/health/`.
+and county boundaries. The React map reads complete release, county-boundary
+and county-summary collections; Diagnostics and the current dashboard use `/api/health/`.
 Location drill-down uses signed cursors that detect release changes.
 
 | Route | Response |
@@ -434,10 +450,11 @@ the [frontend design](docs/plans/frontend-design.md), with
 [responsive wireframes](docs/plans/frontend-wireframes.html) that open directly
 in a browser. The [frontend guidelines](docs/frontend-guidelines.md) collect
 shared labels, selection/error behavior, accessibility, and implementation
-boundaries. The React shell now implements release selection and readiness as
-described in the [Issue #72 plan](docs/plans/issue-72-react-shell.md). The county
-map, analyst workflows, and AI forms remain planned; the dashboard is still a
-stack check.
+boundaries. The React shell provides release selection as described in the
+[Issue #72 plan](docs/plans/issue-72-react-shell.md), with the county map,
+accessible table/detail and verification described in the
+[Issue #73 plan](docs/plans/issue-73-county-map.md). Analyst workflows and AI forms
+remain planned; the dashboard is still a stack check.
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is

@@ -33,8 +33,8 @@ export function rollupPage(
 ): RollupPage {
   return {
     boundary_vintage: 2020,
-    count: rows.length ? 88 : 0,
-    next: rows.length ? 'http://localhost/api/v1/served-unserved/rollups/?page=2' : null,
+    count: rows.length,
+    next: null,
     previous: null,
     release,
     results: rows,
@@ -51,4 +51,40 @@ export function deferred<T>() {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+export function countyPage(codes = ['39001'], next: string | null = null) {
+  return {
+    type: 'FeatureCollection',
+    state: '39',
+    boundary_vintage: 2020,
+    count: codes.length,
+    next,
+    previous: null,
+    features: codes.map((code, i) => ({
+      type: 'Feature',
+      id: code,
+      properties: { code, name: code === '39001' ? 'Adams County' : `County ${code}` },
+      geometry: {
+        type: 'MultiPolygon',
+        coordinates: [
+          [
+            [
+              [-84 + i * 0.1, 39],
+              [-83.9 + i * 0.1, 39],
+              [-83.9 + i * 0.1, 39.1],
+              [-84 + i * 0.1, 39.1],
+              [-84 + i * 0.1, 39],
+            ],
+          ],
+        ],
+      },
+    })),
+  };
+}
+
+export function first<T>(rows: T[]): T {
+  const item = rows[0];
+  if (item === undefined) throw new Error('Expected fixture row');
+  return item;
 }

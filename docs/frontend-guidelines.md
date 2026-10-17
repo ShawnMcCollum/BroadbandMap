@@ -5,7 +5,8 @@ Status: approved by the repository owner on October 16, 2026, as recorded in
 API and accepted ADR requirements cited here also apply.
 See the [design and decision table](plans/frontend-design.md) and
 [responsive wireframes](plans/frontend-wireframes.html). These describe planned
-screens; the current applications remain stack checks.
+screens. The React application now provides the county map and accessible
+table/detail; the Streamlit dashboard remains a stack check.
 
 ## Vocabulary and provenance
 
