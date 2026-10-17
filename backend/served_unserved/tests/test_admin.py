@@ -81,7 +81,7 @@ def test_changelist_page_is_ordered_like_the_unique_index(
     with CaptureQueriesContext(connection) as queries:
         admin_client.get(reverse(CHANGELIST))
 
-    page = next(sql for sql in status_queries(queries) if "ORDER BY" in sql)
+    _, page = status_queries(queries)
     order = re.search(r"ORDER BY (.*?)(?: LIMIT \d+)?$", page)
     assert order is not None
     assert order.group(1) == (
@@ -98,7 +98,8 @@ def test_changelist_columns_do_not_sort(admin_client: Client, served_status: Ser
     assert 'href="?o=' not in response.text
 
 
-# The count stops after the cap, and no filter counts its choices, even when asked to.
+# The count stops after the cap, reading the statuses in the page's order, and no filter counts
+# its choices, even when asked to (ADR 0022).
 @pytest.mark.parametrize("params", [{}, {"_facets": ""}])
 def test_changelist_reads_the_statuses_twice(
     admin_client: Client, served_status: ServedStatus, params: dict[str, str]
@@ -109,7 +110,10 @@ def test_changelist_reads_the_statuses_twice(
     assert response.status_code == 200
     count, page = status_queries(queries)
     assert count.startswith("SELECT COUNT(*) FROM (SELECT ")
-    assert count.endswith(" LIMIT 10001) subquery")
+    assert count.endswith(
+        ' ORDER BY "served_unserved_servedstatus"."release_id" ASC, '
+        '"served_unserved_servedstatus"."location_id" ASC LIMIT 10001) subquery'
+    )
     assert page.startswith('SELECT "served_unserved_servedstatus"."id", ')
     assert "Show counts" not in response.text
 
@@ -169,6 +173,103 @@ def test_count_below_the_cap_is_exact(
     assert "3 served statuses" in response.text
     assert "3 results" in response.text
     assert "More than" not in response.text
+
+
+# The flags of a status in each 100/20 Mbps service category. The check constraints allow no other
+# combination (ADR 0022).
+CATEGORY_FLAGS = {
+    "wired": {"any_100_20": True, "wired_100_20": True, "terrestrial_100_20": True},
+    "terrestrial": {"any_100_20": True, "wired_100_20": False, "terrestrial_100_20": True},
+    "any": {"any_100_20": True, "wired_100_20": False, "terrestrial_100_20": False},
+    "none": {"any_100_20": False, "wired_100_20": False, "terrestrial_100_20": False},
+}
+
+
+@pytest.fixture
+def categories(release: Release, block: Block) -> dict[str, ServedStatus]:
+    """A status in each 100/20 Mbps service category, in one release."""
+    return {
+        category: ServedStatus.objects.create(
+            release=release,
+            location_id=1000000001 + offset,
+            block=block,
+            h3_res8="882a91ae3bfffff",
+            **flags,
+        )
+        for offset, (category, flags) in enumerate(CATEGORY_FLAGS.items())
+    }
+
+
+@pytest.mark.parametrize("category", CATEGORY_FLAGS)
+def test_service_filter_lists_the_category(
+    admin_client: Client, categories: dict[str, ServedStatus], category: str
+) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"service": category})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [categories[category]]
+
+
+# One filter offers the four categories, and no filter offers a flag on its own, which would
+# allow combinations that match nothing (ADR 0022). Django shows the release filter only when
+# there are two releases to choose from.
+@pytest.mark.usefixtures("served_status", "j25_status")
+def test_filters_offer_the_service_categories(admin_client: Client) -> None:
+    response = admin_client.get(reverse(CHANGELIST))
+
+    assert response.status_code == 200
+    cl = response.context["cl"]
+    assert [str(spec.title) for spec in cl.filter_specs] == ["release", "100/20 Mbps service"]
+    assert [choice["display"] for choice in cl.filter_specs[1].choices(cl)] == [
+        "All",
+        "Wired",
+        "Terrestrial, not wired",
+        "Any technology, not terrestrial",
+        "Not served",
+    ]
+    for flag in ("any_100_20", "wired_100_20", "terrestrial_100_20"):
+        assert f"{flag}__exact" not in response.text
+
+
+# Each category is selected by the fewest flags that set it apart, so that the planner's row
+# estimates hold and "Not served" reads the partial index servedstatus_not_served (ADR 0022).
+@pytest.mark.parametrize(
+    ("category", "condition"),
+    [
+        ("wired", '"served_unserved_servedstatus"."wired_100_20"'),
+        (
+            "terrestrial",
+            '("served_unserved_servedstatus"."terrestrial_100_20" AND '
+            'NOT "served_unserved_servedstatus"."wired_100_20")',
+        ),
+        (
+            "any",
+            '("served_unserved_servedstatus"."any_100_20" AND '
+            'NOT "served_unserved_servedstatus"."terrestrial_100_20")',
+        ),
+        ("none", 'NOT "served_unserved_servedstatus"."any_100_20"'),
+    ],
+)
+def test_service_filter_selects_by_the_fewest_flags(
+    admin_client: Client, served_status: ServedStatus, category: str, condition: str
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(reverse(CHANGELIST), {"service": category})
+
+    count, page = status_queries(queries)
+    for sql in (count, page):
+        where = re.search(r" WHERE (.*?) ORDER BY ", sql)
+        assert where is not None
+        assert where.group(1) == condition
+
+
+def test_service_filter_refuses_an_unknown_category(
+    admin_client: Client, served_status: ServedStatus
+) -> None:
+    response = admin_client.get(reverse(CHANGELIST), {"service": "satellite"})
+
+    assert response.status_code == 302
+    assert response["Location"].endswith("?e=1")
 
 
 def test_change_view_opens(admin_client: Client, served_status: ServedStatus) -> None:
@@ -479,7 +580,7 @@ def test_rollup_changelist_page_is_ordered_like_the_unique_index(
     with CaptureQueriesContext(connection) as queries:
         admin_client.get(reverse(ROLLUPS))
 
-    page = next(sql for sql in rollup_queries(queries) if "ORDER BY" in sql)
+    _, page = rollup_queries(queries)
     order = re.search(r"ORDER BY (.*?)(?: LIMIT \d+)?$", page)
     assert order is not None
     assert order.group(1) == (
@@ -498,7 +599,8 @@ def test_rollup_changelist_columns_do_not_sort(admin_client: Client, rollup: Rol
     assert 'href="?o=' not in response.text
 
 
-# The count stops after the cap, and no filter counts its choices, even when asked to.
+# The count stops after the cap, reading the rollups in the page's order, and no filter counts its
+# choices, even when asked to (ADRs 0022 and 0024).
 @pytest.mark.parametrize("params", [{}, {"_facets": ""}])
 def test_rollup_changelist_reads_the_rollups_twice(
     admin_client: Client, rollup: Rollup, params: dict[str, str]
@@ -509,7 +611,12 @@ def test_rollup_changelist_reads_the_rollups_twice(
     assert response.status_code == 200
     count, page = rollup_queries(queries)
     assert count.startswith("SELECT COUNT(*) FROM (SELECT ")
-    assert count.endswith(" LIMIT 10001) subquery")
+    assert count.endswith(
+        ' ORDER BY "served_unserved_rollup"."release_id" ASC, '
+        '"served_unserved_rollup"."level" ASC, '
+        '"served_unserved_rollup"."code" ASC, '
+        '"served_unserved_rollup"."state_id" ASC LIMIT 10001) subquery'
+    )
     assert page.startswith('SELECT "served_unserved_rollup"."id", ')
     assert "Show counts" not in response.text
 
