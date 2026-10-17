@@ -2,7 +2,7 @@
 {% load i18n %}
 {% comment %}
 Django 5.2's admin/pagination.html, except that it says when CappedCountPaginator stopped
-counting (ADR 0022).
+counting (ADR 0022). Both of this app's admins use it (ADR 0024).
 {% endcomment %}
 <p class="paginator">
 {% if pagination_required %}

@@ -246,7 +246,10 @@ class Rollup(models.Model):
     class Meta:
         verbose_name = "rollup"
         verbose_name_plural = "rollups"
-        ordering = ["release", "level", "code", "state"]
+        # By release and state ID, not by the release's dates and the state's ordering, which would
+        # join every rollup to its release and state and sort them all. The unique index serves
+        # this order, so a page of the admin reads one page of the index (ADR 0024).
+        ordering = ["release_id", "level", "code", "state_id"]
         constraints = [
             models.UniqueConstraint(
                 fields=["release", "level", "code", "state"],
