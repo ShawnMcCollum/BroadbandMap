@@ -6,7 +6,8 @@ API and accepted ADR requirements cited here also apply.
 See the [design and decision table](plans/frontend-design.md) and
 [responsive wireframes](plans/frontend-wireframes.html). These describe planned
 screens. The React application now provides the county map and accessible
-table/detail; the Streamlit dashboard remains a stack check.
+table/detail; the Streamlit dashboard provides county summaries, technology
+filters, a chart and summary CSV, with diagnostics as a secondary view.
 
 ## Vocabulary and provenance
 

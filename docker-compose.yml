@@ -85,6 +85,7 @@ services:
     build: ./dashboard
     environment:
       API_BASE_URL: http://backend:8000
+      WEB_APP_URL: ${WEB_APP_URL:-http://localhost:${WEB_PORT:-5173}/}
     volumes:
       - ./dashboard:/app
     ports:

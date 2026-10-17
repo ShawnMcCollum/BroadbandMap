@@ -9,6 +9,34 @@ Newest entries first.
 
 ---
 
+## 2026-10-17 — Analyst county summaries and bounded CSV
+
+- Issue #74 replaces the dashboard stack check with API-only Ohio analysis;
+  diagnostics remains a secondary view. One immutable selection and one current
+  transient snapshot drive totals, chart, table, county detail and export. This
+  leaves #75 a county-selection boundary without introducing location paging now.
+- Complete collection validation matters more than an apparently useful partial
+  chart: any page failure, context change or unsafe paging destination discards
+  the attempt before totals or CSV can appear. Boundary-only counties keep blank
+  observations. Weighted aggregation is verified by 1/1 + 1/9 = 2/10 = 20%.
+- County names come from the implemented GeoJSON resource, with geometry dropped
+  after decoding. Flag/release changes reuse those names, while explicit Refresh
+  and a return from Diagnostics reread the current data. No process-wide cache or
+  history of former selections is introduced under the API's no-store contract.
+- The CSV uses a real writer, UTF-8 BOM, raw counts, context and documented text
+  prefixes. Downloaded Terrestrial output had 88 rows and totals identical to the
+  live dashboard. Its apostrophe identifier convention is explicit rather than
+  relying on CSV quoting to control spreadsheet typing or formula evaluation.
+- Actual Streamlit behavior informed the checks: AppTest exposes the chart as
+  `vega_lite_chart`, horizontal chart titles swap input axes, and source reloads
+  can leave old class instances in session. Tests inspect plotted Arrow values
+  as well as table/CSV outputs, and obsolete snapshot objects are reinitialized.
+- Final dashboard checks passed 108 tests plus formatting/lint/strict types.
+  The [plan and verification record](plans/issue-74-dashboard-summaries.md) contains
+  actual 88-county totals, downloaded CSV checks, keyboard/320px layout, both
+  navigation directions, custom public URL and diagnostics evidence. Actual
+  browser zoom and desktop spreadsheet import remain explicitly unverified.
+
 ## 2026-10-16 — Ohio county map and accessible detail
 
 - Issue #73 replaces the one-row readiness probe with complete county summaries
