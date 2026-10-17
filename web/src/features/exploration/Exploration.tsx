@@ -1,3 +1,4 @@
+import { CountyExplorer } from '../map/CountyExplorer';
 import type { Flag, ReleaseSummary } from '../../api/types';
 import type { useExploration } from './useExploration';
 
@@ -11,11 +12,11 @@ const releaseName = (r: ReleaseSummary) =>
   `${r.filing_period} · ${r.as_of} · processed ${r.processed_on}`;
 
 export function Exploration({ model }: { model: Model }) {
-  const { catalog, selection, selectedRelease, hasOhio, readiness } = model;
+  const { catalog, selection, selectedRelease, hasOhio, summaries } = model;
   const selectedFlag = selection?.flag ?? 'wired';
   const loadedStates =
-    readiness?.loadedStates ?? selectedRelease?.states.map((s) => `${s.name} (${s.code})`) ?? [];
-  const fieldErrors = readiness?.kind === 'failed' ? (readiness.error?.problem?.errors ?? []) : [];
+    summaries?.loadedStates ?? selectedRelease?.states.map((s) => `${s.name} (${s.code})`) ?? [];
+  const fieldErrors = summaries?.kind === 'failed' ? (summaries.error?.problem?.errors ?? []) : [];
   const releaseError = fieldErrors.filter(
     (e) => e.pointer === '/as_of' || e.pointer === '/processed_on',
   );
@@ -138,68 +139,11 @@ export function Exploration({ model }: { model: Model }) {
           {!catalog.loading && selectedRelease && !hasOhio && (
             <p role="status">Ohio is not loaded for this release.</p>
           )}
-          {hasOhio && !catalog.loading && (
-            <SummaryStatus readiness={readiness} retry={model.refresh} />
-          )}
         </>
       )}
+      <CountyExplorer model={model} />
     </section>
   );
-}
-
-function SummaryStatus({ readiness, retry }: { readiness: Model['readiness']; retry: () => void }) {
-  if (!readiness || readiness.kind === 'loading')
-    return <p role="status">Checking county summaries…</p>;
-  if (readiness.kind === 'ohio-absent')
-    return (
-      <p role="status">
-        Ohio is not loaded for this release. Loaded states:{' '}
-        {readiness.loadedStates?.join(', ') || 'none'}.
-      </p>
-    );
-  if (readiness.kind === 'ready')
-    return (
-      <div role="status">
-        <p>County summary API responded for this selection.</p>
-        <p>The county map and table will arrive in #73.</p>
-        <p>
-          {coverageText(readiness.summaryCoverage)} The bounded first page does not establish
-          all-county completeness.
-        </p>
-      </div>
-    );
-  if (readiness.kind === 'empty')
-    return (
-      <div role="status">
-        <p>No county summary rows were returned for this selection.</p>
-        <p>{coverageText(readiness.summaryCoverage)}</p>
-      </div>
-    );
-  const unavailable = readiness.error?.status === 503;
-  const text = unavailable
-    ? 'County summaries are unavailable. Try refreshing; an application operator may need to rebuild them.'
-    : 'Could not check county summaries.';
-  return (
-    <div className="error" role="alert">
-      <p>{text}</p>
-      <ErrorBox text="" error={readiness.error} retry={retry} associatedFields />
-    </div>
-  );
-}
-
-function coverageText(coverage: string | undefined) {
-  switch (coverage) {
-    case 'stored_rollups_only':
-      return 'Stored county summaries are available.';
-    case 'observed':
-      return 'The API reports observed summary coverage.';
-    case 'no_observations':
-      return 'The API reports no observations for this selection.';
-    case 'outside_release_coverage':
-      return 'This selection is outside the release coverage.';
-    default:
-      return 'The API returned coverage metadata.';
-  }
 }
 
 function ErrorBox({

@@ -1,8 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import { d25, j25, releasePage, rollupPage, deferred } from './test-fixtures/api';
+import { resetMapMock } from './test-fixtures/maplibre';
+vi.mock('maplibre-gl', async () => (await import('./test-fixtures/maplibre')).maplibre);
+import { d25, j25, releasePage, rollupPage, deferred, countyPage } from './test-fixtures/api';
+beforeEach(resetMapMock);
 
 const response = (body: unknown, status = 200, type = 'application/json') =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': type } });
@@ -17,6 +20,8 @@ function setupFetch(
   const calls: URL[] = [];
   const fetch = vi.fn((input: RequestInfo | URL) => {
     const url = new URL(inputUrl(input));
+    if (url.pathname.endsWith('/geographies/county/'))
+      return Promise.resolve(response(countyPage()));
     calls.push(url);
     if (url.pathname === '/api/health/')
       return Promise.resolve(response({ status: 'ok', database: 'ok', redis: 'ok', worker: 'ok' }));
@@ -35,7 +40,7 @@ afterEach(() => {
 });
 
 describe('application shell and exploration', () => {
-  it('loads complete release versions, pins dates, checks one summary page and retains provenance', async () => {
+  it('loads complete release versions, pins dates, loads complete summaries and retains provenance', async () => {
     const { calls } = setupFetch((url) =>
       response({
         ...rollupPage(url.searchParams.get('as_of') === j25.as_of ? j25 : d25),
@@ -44,25 +49,23 @@ describe('application shell and exploration', () => {
     );
     render(<App />);
     expect(screen.getByText('Loading releases…')).toBeInTheDocument();
-    expect(
-      await screen.findByText('County summary API responded for this selection.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('County summaries loaded: 1.')).toBeInTheDocument();
     expect(screen.getByLabelText('FCC data release')).toHaveValue(
       `${d25.as_of}|${d25.processed_on}`,
     );
     expect(
       screen.getByRole('option', { name: /2025-12-31 · processed 2026-09-29/ }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Loaded states: Ohio \(39\)/)).toBeInTheDocument();
-    expect(screen.getByText(/FCC National Broadband Map/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Loaded states: Ohio \(39\)/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/FCC National Broadband Map/).length).toBeGreaterThan(0);
     const summary = calls.find((url) => url.pathname.endsWith('/rollups/'));
     expect(summary).toBeDefined();
     if (!summary) throw new Error('Expected a county summary request.');
     expect(summary.searchParams.get('as_of')).toBe(d25.as_of);
     expect(summary.searchParams.get('processed_on')).toBe(d25.processed_on);
-    expect(summary.searchParams.get('page_size')).toBe('1');
-    expect(screen.getByText(/does not establish all-county completeness/)).toBeInTheDocument();
-    expect(screen.queryByText('100')).not.toBeInTheDocument();
+    expect(summary.searchParams.get('page_size')).toBe('100');
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '100' })).toBeInTheDocument();
   });
   it('keeps release and flag controls as the single selection owner', async () => {
     const { calls } = setupFetch((url) =>
@@ -72,7 +75,7 @@ describe('application shell and exploration', () => {
       }),
     );
     render(<App />);
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
@@ -126,14 +129,16 @@ describe('application shell and exploration', () => {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(
+        fetch.mock.calls.filter((c) => !inputUrl(c[0]).includes('/geographies/')),
+      ).toHaveLength(2);
     });
   });
   it('distinguishes empty and unavailable summary reads and supports explicit retry', async () => {
     const { fetch } = setupFetch((url) => {
-      const body = rollupPage(d25, [], 'no_observations');
+      const body = rollupPage(d25, [], 'stored_rollups_only');
       if (
-        url.searchParams.get('page_size') === '1' &&
+        url.searchParams.get('page_size') === '100' &&
         fetch.mock.calls.filter((c) => inputUrl(c[0]).includes('/rollups/')).length === 1
       )
         return response({}, 503, 'text/html');
@@ -141,15 +146,17 @@ describe('application shell and exploration', () => {
     });
     render(<App />);
     expect(await screen.findByText(/County summaries are unavailable/)).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Retry'));
+    fireEvent.click(screen.getByText('Retry summaries'));
     expect(
-      await screen.findByText('No county summary rows were returned for this selection.'),
+      await screen.findByText(
+        'No stored county summaries were returned. Select a county to check its coverage.',
+      ),
     ).toBeInTheDocument();
   });
   it('switches hash routes, updates title, preserves map selection and keeps diagnostics contract', async () => {
     setupFetch();
     render(<App />);
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     window.location.hash = '#/ask';
     fireEvent(window, new HashChangeEvent('hashchange'));
     expect(await screen.findByRole('heading', { name: 'Ask (stub)' })).toBeInTheDocument();
@@ -163,6 +170,8 @@ describe('application shell and exploration', () => {
     let resolveA!: (value: Response) => void;
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = new URL(inputUrl(input));
+      if (url.pathname.endsWith('/geographies/county/'))
+        return Promise.resolve(response(countyPage()));
       if (url.pathname === '/api/health/')
         return Promise.resolve(
           response({ status: 'ok', database: 'ok', redis: 'ok', worker: 'ok' }),
@@ -181,18 +190,14 @@ describe('application shell and exploration', () => {
     });
     vi.stubGlobal('fetch', fetch);
     render(<App />);
-    await screen.findByText('Checking county summaries…');
+    await screen.findByText('Loading county summaries…');
     fireEvent.change(await screen.findByLabelText('FCC data release'), {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
-    expect(
-      await screen.findByText('County summary API responded for this selection.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('County summaries loaded: 1.')).toBeInTheDocument();
     resolveA(response(rollupPage(d25)));
     await waitFor(() =>
-      expect(
-        screen.getByText('County summary API responded for this selection.'),
-      ).toBeInTheDocument(),
+      expect(screen.getByText('County summaries loaded: 1.')).toBeInTheDocument(),
     );
     expect(screen.getByLabelText('FCC data release')).toHaveValue(
       `${j25.as_of}|${j25.processed_on}`,
@@ -253,6 +258,8 @@ describe('application shell and exploration', () => {
     let call = 0;
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = new URL(inputUrl(input));
+      if (url.pathname.endsWith('/geographies/county/'))
+        return Promise.resolve(response(countyPage()));
       if (url.pathname.endsWith('/releases/')) return Promise.resolve(response(releasePage()));
       call += 1;
       if (call === 1)
@@ -268,7 +275,7 @@ describe('application shell and exploration', () => {
     render(<App />);
     expect(await screen.findByText('The API request failed (HTTP 502).')).toBeInTheDocument();
     expect(screen.queryByText(/private traceback|private socket detail/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Retry'));
+    fireEvent.click(screen.getByText('Retry summaries'));
     expect(await screen.findByText('The API could not be reached.')).toBeInTheDocument();
   });
 
@@ -276,6 +283,8 @@ describe('application shell and exploration', () => {
     let catalogCount = 0;
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = new URL(inputUrl(input));
+      if (url.pathname.endsWith('/geographies/county/'))
+        return Promise.resolve(response(countyPage()));
       if (url.pathname.endsWith('/releases/')) {
         catalogCount += 1;
         return Promise.resolve(
@@ -300,7 +309,7 @@ describe('application shell and exploration', () => {
     });
     vi.stubGlobal('fetch', fetch);
     render(<App />);
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
@@ -326,6 +335,8 @@ describe('application shell and exploration', () => {
     let catalogCount = 0;
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = new URL(inputUrl(input));
+      if (url.pathname.endsWith('/geographies/county/'))
+        return Promise.resolve(response(countyPage()));
       if (url.pathname.endsWith('/releases/')) {
         catalogCount += 1;
         return Promise.resolve(response(releasePage(catalogCount === 1 ? [d25, j25] : [j25])));
@@ -334,7 +345,7 @@ describe('application shell and exploration', () => {
     });
     vi.stubGlobal('fetch', fetch);
     render(<App />);
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     fireEvent.click(screen.getByText('Refresh'));
     expect(
       await screen.findByText('This release is no longer loaded. Choose a release.'),
@@ -367,6 +378,8 @@ describe('application shell and exploration', () => {
     };
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = new URL(inputUrl(input));
+      if (url.pathname.endsWith('/geographies/county/'))
+        return Promise.resolve(response(countyPage()));
       if (url.pathname.endsWith('/releases/')) return Promise.resolve(response(releasePage()));
       summaryCalls += 1;
       return summaryCalls === 1
@@ -388,17 +401,17 @@ describe('application shell and exploration', () => {
     });
     expect(summaryCalls).toBe(1);
     fireEvent.click(screen.getByText('Refresh'));
-    expect(
-      await screen.findByText('County summary API responded for this selection.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('County summaries loaded: 1.')).toBeInTheDocument();
     expect(summaryCalls).toBe(2);
   });
 
-  it('does not resurrect A readiness during A→B→A reads or on map re-entry in StrictMode', async () => {
+  it('does not resurrect A summaries during A→B→A reads or on map re-entry in StrictMode', async () => {
     const pending: Array<{ release: string | null; resolve: (value: Response) => void }> = [];
     let summaryCalls = 0;
     const fetch = vi.fn((input: RequestInfo | URL) => {
       const url = new URL(inputUrl(input));
+      if (url.pathname.endsWith('/geographies/county/'))
+        return Promise.resolve(response(countyPage()));
       if (url.pathname.endsWith('/releases/')) return Promise.resolve(response(releasePage()));
       summaryCalls += 1;
       if (summaryCalls === 1) return Promise.resolve(response(rollupPage()));
@@ -412,27 +425,27 @@ describe('application shell and exploration', () => {
         <App />
       </StrictMode>,
     );
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
     await waitFor(() => {
       expect(pending.some((p) => p.release === j25.as_of)).toBe(true);
     });
-    expect(screen.getByText('Checking county summaries…')).toBeInTheDocument();
+    expect(screen.getByText('Loading county summaries…')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${d25.as_of}|${d25.processed_on}` },
     });
     await waitFor(() => {
       expect(pending.filter((p) => p.release === d25.as_of)).toHaveLength(1);
     });
-    expect(screen.getByText('Checking county summaries…')).toBeInTheDocument();
+    expect(screen.getByText('Loading county summaries…')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Ask (stub)'));
     fireEvent.click(screen.getByText('Map'));
     await waitFor(() => {
       expect(summaryCalls).toBeGreaterThan(3);
     });
-    expect(screen.getByText('Checking county summaries…')).toBeInTheDocument();
+    expect(screen.getByText('Loading county summaries…')).toBeInTheDocument();
   });
 });
 
@@ -444,6 +457,8 @@ describe('review regressions', () => {
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
         const url = new URL(inputUrl(input));
+        if (url.pathname.endsWith('/geographies/county/'))
+          return Promise.resolve(response(countyPage()));
         calls.push(url);
         if (url.pathname.endsWith('/releases/')) {
           return Promise.resolve(
@@ -459,8 +474,8 @@ describe('review regressions', () => {
       }),
     );
     render(<App />);
-    await screen.findByText('County summary API responded for this selection.');
-    expect(screen.getAllByRole('option')).toHaveLength(6);
+    await screen.findByText('County summaries loaded: 1.');
+    expect(screen.getByLabelText('FCC data release').querySelectorAll('option')).toHaveLength(3);
     expect(screen.getByLabelText('FCC data release')).toHaveValue(
       `${latest.as_of}|${latest.processed_on}`,
     );
@@ -471,7 +486,7 @@ describe('review regressions', () => {
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${d25.as_of}|${d25.processed_on}` },
     });
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     const summaries = calls.filter((url) => url.pathname.endsWith('/rollups/'));
     expect(summaries.map((url) => url.searchParams.get('processed_on'))).toEqual([
       latest.processed_on,
@@ -482,16 +497,14 @@ describe('review regressions', () => {
 
   it('uses the current summary coverage rather than stale catalog states', async () => {
     const changed = { ...d25, states: [{ code: '54', name: 'West Virginia', abbreviation: 'WV' }] };
-    setupFetch(() => response(rollupPage(changed, [], 'outside_release_coverage')));
+    setupFetch(() => response(rollupPage(changed, [], 'stored_rollups_only')));
     render(<App />);
     await screen.findByText(/Ohio is not loaded for this release/);
     expect(
       screen.getByText(/Loaded states: West Virginia \(54\).*Source: FCC National Broadband Map/),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Loaded states: Ohio/)).not.toBeInTheDocument();
-    expect(
-      screen.queryByText('County summary API responded for this selection.'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('County summaries loaded: 1.')).not.toBeInTheDocument();
   });
 
   it('retains catalog field errors without controls and clears old errors during Retry', async () => {
@@ -543,23 +556,23 @@ describe('review regressions', () => {
         : response(rollupPage(url.searchParams.get('as_of') === j25.as_of ? j25 : d25)),
     );
     render(<App />);
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     fireEvent.click(screen.getByRole('link', { name: 'Ask (stub)' }));
     await screen.findByRole('heading', { name: 'Ask (stub)' });
     missing = true;
     fireEvent.click(screen.getByRole('link', { name: 'Map' }));
     await screen.findByText('Request ID: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee');
-    expect(screen.queryByText('Checking county summaries…')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading county summaries…')).not.toBeInTheDocument();
     expect(calls.filter((url) => url.pathname.endsWith('/rollups/'))).toHaveLength(2);
     missing = false;
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${d25.as_of}|${d25.processed_on}` },
     });
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     expect(calls.filter((url) => url.pathname.endsWith('/rollups/'))).toHaveLength(4);
   });
 
@@ -572,6 +585,8 @@ describe('review regressions', () => {
       'fetch',
       vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
         const url = new URL(inputUrl(input));
+        if (url.pathname.endsWith('/geographies/county/'))
+          return Promise.resolve(response(countyPage()));
         if (url.pathname.endsWith('/releases/')) return Promise.resolve(response(releasePage()));
         if (url.searchParams.get('as_of') === d25.as_of || holdB) {
           if (options?.signal) signals.push(options.signal);
@@ -581,17 +596,17 @@ describe('review regressions', () => {
       }),
     );
     const view = render(<App />);
-    await screen.findByText('Checking county summaries…');
+    await screen.findByText('Loading county summaries…');
     fireEvent.change(screen.getByLabelText('FCC data release'), {
       target: { value: `${j25.as_of}|${j25.processed_on}` },
     });
-    await screen.findByText('County summary API responded for this selection.');
+    await screen.findByText('County summaries loaded: 1.');
     expect(signals[0]?.aborted).toBe(true);
     await act(async () => {
       pendingA.reject(new Error('private late transport failure'));
       await pendingA.promise.catch(() => undefined);
     });
-    expect(screen.queryByText('Could not check county summaries.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Could not load county summaries.')).not.toBeInTheDocument();
     holdB = true;
     fireEvent.click(screen.getByText('Refresh'));
     await waitFor(() => {
