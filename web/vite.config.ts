@@ -7,7 +7,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       // In Docker Compose the API is reached by its service name.
-      '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:8000',
+      '/api': {
+        target: process.env.API_PROXY_TARGET ?? 'http://localhost:8000',
+        // Django builds pagination links from the browser Host, including its port.
+        changeOrigin: false,
+      },
     },
     watch: {
       // File change events do not cross a Windows bind mount, so poll instead.

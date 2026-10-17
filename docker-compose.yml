@@ -72,6 +72,7 @@ services:
     environment:
       API_PROXY_TARGET: http://backend:8000
       VITE_USE_POLLING: "true"
+      VITE_DASHBOARD_URL: ${VITE_DASHBOARD_URL:-http://localhost:${DASHBOARD_PORT:-8501}/}
     volumes:
       - ./web:/app
       - /app/node_modules
