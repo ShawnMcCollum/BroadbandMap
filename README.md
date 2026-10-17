@@ -52,7 +52,7 @@ loaded data is kept.
 | Service | URL | What it shows |
 |---------|-----|---------------|
 | Web (React) | <http://localhost:5173> | Ohio county map, summaries and county detail |
-| Dashboard (Streamlit) | <http://localhost:8501> | **Test page:** stack connection check |
+| Dashboard (Streamlit) | <http://localhost:8501> | Ohio county analysis, chart and summary CSV |
 | API (Django) | <http://localhost:8000/api/health/> | Health of PostGIS, Redis and the Celery worker, as JSON |
 
 ### Check that the stack is connected
@@ -71,8 +71,10 @@ loaded data is kept.
    using the County selector, or choosing its table button. Diagnostics at
    [Diagnostics](http://localhost:5173/#/diagnostics) retains the API/PostGIS/Redis/worker
    health check.
-3. Open the dashboard test page: <http://localhost:8501>
-4. The dashboard test page should show four checks:
+3. Open the analyst dashboard: <http://localhost:8501>. Select a release and
+   technology to see observed county totals, a served-share chart, the full
+   county table and a summary CSV download.
+4. Choose **Diagnostics** in the dashboard to see the four stack checks:
 
    ```text
    ✓ API
@@ -91,6 +93,55 @@ browser-reachable dashboard base URL (HTTP or HTTPS, without credentials,
 query or fragment). The default follows `DASHBOARD_PORT`. Restart or rebuild
 the web service after changing Vite environment values; they are read when the
 frontend starts/builds.
+
+Dashboard Map navigation uses `WEB_APP_URL`, which defaults to
+`http://localhost:${WEB_PORT:-5173}/`. Set it to the browser-reachable React
+base URL when deploying elsewhere. Both cross-app links open in the same tab
+with the destination's default filters; selections are not transferred.
+
+### Analyst dashboard
+
+The dashboard reads only the API through server-side `API_BASE_URL`. It starts
+with the latest loaded period/processing pair, Ohio and Wired; Any technology
+and Terrestrial use the corresponding source Boolean flags. Both dates, filing
+period, loaded states, the 100/20 Mbps threshold and Census TIGER/Line 2020
+boundary vintage stay visible. Different processings remain separate choices;
+Ohio absent from the newest release does not select an older release for you.
+
+Observed county totals use **sum(Served) / sum(locations)**. The chart orders
+observed counties by served share; the accessible table orders counties by name
+and GEOID. Missing observations have blank counts and no rate, and never count
+as zero service. A county selector shows counts or checks missing coverage;
+location pages remain planned in #75.
+
+Every summary page must succeed before totals or CSV appear. A county-name
+failure retains an observed table using GEOIDs and disables CSV until names can
+be retried. Refresh rereads the catalog, names and summaries while preserving
+the selected date pair and technology. Returning from Diagnostics also refreshes
+the data. If a release disappears, choose a release explicitly. Reads use bounded
+HTTP timeouts; separate API pages do not promise a common database snapshot.
+Only the current selection and responses are kept in transient session memory;
+there is no process-wide data cache or rerun history of former datasets.
+
+**Summary CSV:** the download contains observed counties for the displayed
+release/technology, independently of the selected drill-down county. Filename:
+`ohio-county-summary-{as_of}-processed-{processed_on}-{flag}.csv`. It is UTF-8 with
+BOM, with raw integer counts and these columns in order:
+
+```text
+county_geoid,county_name,locations,served,not_served,served_share_percent,flag,as_of,processed_on,loaded_state_codes,fcc_source,boundary_vintage
+```
+
+The percentage has up to six decimal places; raw counts remain authoritative.
+Loaded-state codes are semicolon-separated. GEOIDs and loaded-state codes carry
+one literal apostrophe prefix (for example `'39001`, `'01;39`) to preserve text
+and leading zeros. Potentially executable text is prefixed too; quoting alone
+does not prevent formulas. Programmatic readers remove that prefix from the two
+identifier columns. Spreadsheet software handles automatic CSV typing
+differently: import those columns as text and inspect the result. Raw CSV round
+trips are tested; desktop spreadsheet import has not been verified for this slice.
+
+### Ohio county map
 
 The map starts with the latest loaded data period and processing date,
 Ohio, and the Wired flag. Different processings remain selectable. Refresh and
@@ -453,8 +504,10 @@ shared labels, selection/error behavior, accessibility, and implementation
 boundaries. The React shell provides release selection as described in the
 [Issue #72 plan](docs/plans/issue-72-react-shell.md), with the county map,
 accessible table/detail and verification described in the
-[Issue #73 plan](docs/plans/issue-73-county-map.md). Analyst workflows and AI forms
-remain planned; the dashboard is still a stack check.
+[Issue #73 plan](docs/plans/issue-73-county-map.md). Dashboard summaries,
+technology filters, chart and CSV are described in the
+[Issue #74 plan](docs/plans/issue-74-dashboard-summaries.md). Location drill-down
+and AI forms remain planned.
 
 Questions still being worked out, and how earlier ones were answered, are kept
 in [docs/open-questions.md](docs/open-questions.md). Day-to-day reasoning is
