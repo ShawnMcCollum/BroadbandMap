@@ -1,12 +1,15 @@
 # Issue #71: frontend screen and interaction design
 
-Status: draft for owner review, October 16, 2026. Branch:
-`codex/71-frontend-design`, based on `5bb75c9`. This document proposes the
-frontend behavior; it does not claim that these screens are implemented.
+Status: approved by the repository owner on October 16, 2026, as recorded in
+[issue #71](https://github.com/ShawnMcCollum/BroadbandMap/issues/71#issuecomment-6224452648).
+Branch: `codex/71-frontend-design`, originally based on `5bb75c9`. This document
+defines the approved frontend design; the screens are not yet implemented.
 
-The owner selected **explicit filter reset when navigating between apps** in
-this issue's design discussion. Existing ADR decisions remain accepted. Other
-new choices below are proposals until this design is approved.
+The owner approved the design package in PR #81 at `e979c01`, including the
+decision table, responsive wireframes and shared interaction conventions. The
+owner had already selected **explicit filter reset when navigating between apps**.
+Existing ADR decisions remain accepted; the new choices below are approved design
+decisions, with implementation and runtime checks owned by the following issues.
 
 ## Scope and review method
 
@@ -22,10 +25,10 @@ location paging, administrator settings, and stub questions. Each wireframe
 reflows from desktop to a narrow viewport; its state examples show the important
 empty/error alternatives. The guidelines define behavior beyond the sketches.
 
-Review the proposals and unresolved implementation checks below, then record
-owner approval before adopting them in feature code. This satisfies the
+Owner approval of the choices below satisfies the
 design-first boundary in [#70](https://github.com/ShawnMcCollum/BroadbandMap/issues/70)
 and [#71](https://github.com/ShawnMcCollum/BroadbandMap/issues/71).
+Following implementation issues still require their own concrete plan review.
 No package installation, feature implementation, backend/API change, issue
 rewrite, or original-feature closure belongs to this slice.
 
@@ -55,7 +58,7 @@ Narrow: navigation wraps; controls, county selector, selected detail, map, legen
 and county table stack in that order. Map height is bounded (about 20rem), so it
 does not consume the whole page. No essential content requires hover or gestures.
 
-The legend encodes **Served share**, not Not served share. Proposed bins are
+The legend encodes **Served share**, not Not served share. The approved bins are
 0–<20%, 20–<40%, 40–<60%, 60–<80%, and 80–100%. Classify unrounded ratios;
 display percentages to one decimal. Missing observations use a separate neutral
 hatched category labeled "No summary observation"; an actual 0% stays in the
@@ -160,7 +163,7 @@ on failure, and ignore late results after navigation or a newer request.
 Re-entering the page refreshes status after administrator changes. Questions
 and answers are transient and do not become conversation history.
 
-## Navigation and browser integration proposal
+## Navigation and browser integration
 
 Use native links and a small hash-route switch: `/#/map`, `/#/ask`,
 `/#/settings/ai`, `/#/diagnostics`; bare `/` opens map. This avoids adding a
@@ -180,7 +183,7 @@ synchronized selection. Browser Back/Forward may restore historical state;
 each app must label and validate any restored selection, not promise a reset
 for history navigation it does not control.
 
-Proposed configuration, introduced by #72/#74 rather than this documentation PR:
+Approved configuration design, to be implemented by #72/#74:
 
 | Setting | Default and use |
 | --- | --- |
@@ -192,8 +195,9 @@ Proposed configuration, introduced by #72/#74 rather than this documentation PR:
 
 Validate configured navigation URLs as HTTP(S) without embedded credentials.
 Document that Vite environment changes require restarting/rebuilding the affected
-frontend; ordinary AI settings saves do not. Treat these settings as proposals
-until #72/#74 wire them through Compose and `.env.example` and test port overrides.
+frontend; ordinary AI settings saves do not. These settings are planned rather
+than currently available: #72/#74 wire them through Compose and `.env.example`
+and test port overrides.
 
 For #76, use the existing Django admin session at the **web origin**:
 
@@ -221,7 +225,8 @@ permission. Use disposable accounts/credentials for verification.
 
 ## Map dependency and resource review
 
-Propose **`maplibre-gl` 6.14.0**, pinned exactly in #73 and locked with pnpm.
+The approved dependency is **`maplibre-gl` 6.14.0**, to be pinned exactly in #73
+and locked with pnpm.
 Its [tagged package metadata](https://github.com/maplibre/maplibre-gl-js/blob/v6.14.0/package.json)
 declares ESM, bundled TypeScript types, Node >=16.14, and TypeScript 6 / Vite 8
 development dependencies. The repo's Node 22, TypeScript 6.0.3 and Vite 8.3.4
@@ -256,16 +261,17 @@ simplification without new measurements and a reviewed decision.
 | React map, Streamlit analytics, API-only reads | Accepted ADRs 0004/0018 | Preserve established responsibilities; #73/#74 |
 | Wired default, 100/20 complement wording, explicit date pair | Accepted API/domain decisions | Avoid inconsistent interpretation; #72–#77 |
 | Cross-app links reset filters with clear guidance | Owner selected during #71 | Avoid unsupported synchronization; #72/#74 |
-| Four hash routes; diagnostics secondary | Proposed | Small navigation surface without a router; #72 |
-| Five sequential blue bins, hatch missing observations, table alternative | Proposed | Stable comparable scale and non-color access; #73 |
-| Tile-free MapLibre 6.14.0 with bundled CSS/worker | Proposed; metadata checked | Fits existing county geometry; runtime proof in #73 |
-| Light analytical palette, system fonts, native controls | Proposed | Small dependency/maintenance surface; #72/#74 |
-| Dashboard county selector and explicit drill-down action | Proposed | Predictable keyboard and Streamlit behavior; #74/#75 |
-| Context-bearing summary CSV with text-prefixed identifiers | Proposed | Keep release provenance and avoid numeric identifier inference; #74 verifies import behavior |
-| Existing Django sign-in/POST sign-out plus return-link template | Proposed | Reuse sessions/CSRF; real redirect/static proof in #76 |
+| Four hash routes; diagnostics secondary | Owner approved in #71 | Small navigation surface without a router; #72 |
+| Five sequential blue bins, hatch missing observations, table alternative | Owner approved in #71 | Stable comparable scale and non-color access; #73 |
+| Tile-free MapLibre 6.14.0 with bundled CSS/worker | Owner approved; metadata checked | Fits existing county geometry; runtime proof in #73 |
+| Light analytical palette, system fonts, native controls | Owner approved in #71 | Small dependency/maintenance surface; #72/#74 |
+| Dashboard county selector and explicit drill-down action | Owner approved in #71 | Predictable keyboard and Streamlit behavior; #74/#75 |
+| Context-bearing summary CSV with text-prefixed identifiers | Owner approved in #71 | Keep release provenance and avoid numeric identifier inference; #74 verifies import behavior |
+| Existing Django sign-in/POST sign-out plus return-link template | Owner approved in #71 | Reuse sessions/CSRF; real redirect/static proof in #76 |
 | Future-provider settings and plain-text stub answer | Accepted ADR 0020 | No live provider or analytical claims; #76/#77 |
 
-Owner review must approve or revise the proposed rows before feature implementation.
+Owner review approved the new design choices on October 16, 2026; the approval
+link above is the record of that decision.
 Remaining engineering checks have explicit owners; they are not unanswered UX
 choices: #73 verifies the pinned package and WebGL/payload behavior; #76 proves
 same-origin login/logout/return, static assets, cookie rotation and denial; #74
@@ -279,7 +285,7 @@ OpenAPI and ADRs 0004/0018/0019/0020. Inspect all six wireframes at desktop
 (1,280px), narrow (390px), and 320px widths, including keyboard navigation,
 long IDs, state examples and print/readability. Run `git diff --check`; include
 new files in whitespace validation. No app test suite is necessary for this
-documentation-only change. Record actual outcomes before marking it approved.
+documentation-only change. The performed checks are recorded below.
 
 The [guidelines](../frontend-guidelines.md#implementation-boundaries) identify
 proposed files, owning slices and their tests. Each implementation issue still

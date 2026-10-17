@@ -1,8 +1,9 @@
 # Frontend guidelines
 
-Status: proposed conventions for [issue #71](https://github.com/ShawnMcCollum/BroadbandMap/issues/71),
-pending owner design review. API and accepted ADR requirements cited here already
-apply. See the [design and decision table](plans/frontend-design.md) and
+Status: approved by the repository owner on October 16, 2026, as recorded in
+[issue #71](https://github.com/ShawnMcCollum/BroadbandMap/issues/71#issuecomment-6224452648).
+API and accepted ADR requirements cited here also apply.
+See the [design and decision table](plans/frontend-design.md) and
 [responsive wireframes](plans/frontend-wireframes.html). These describe planned
 screens; the current applications remain stack checks.
 
@@ -93,7 +94,7 @@ An absent summary has no percentage; never assign it 0%. Classify colors before
 rounding and give 100% the last bin. Use exact-code reads for precise missing
 coverage diagnosis. Location `area_coverage` describes the area before filtering.
 
-CSV is disabled until the selected summary collection is complete. Proposed
+CSV is disabled until the selected summary collection is complete. Approved
 column order: `county_geoid`, `county_name`, `locations`, `served`, `not_served`,
 `served_share_percent`, `flag`, `as_of`, `processed_on`, `loaded_state_codes`,
 `fcc_source`, `boundary_vintage`. Percentage is a derived decimal (up to six
@@ -144,7 +145,7 @@ Do not announce every hover or move focus on automatic refreshes.
 
 ## Visual and accessibility conventions
 
-Proposed light analytical palette (first version has no theme switch):
+Approved light analytical palette (first version has no theme switch):
 
 | Token | Value / use |
 | --- | --- |
