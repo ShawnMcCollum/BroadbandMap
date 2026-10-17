@@ -11,7 +11,7 @@ from bdc.models import Release
 from core.admin import CappedCountPaginator
 from geography.models import Block, State
 from geography.tests.helpers import boundary_fields
-from served_unserved.admin import ServedStatusAdmin
+from served_unserved.admin import RollupAdmin, ServedStatusAdmin
 from served_unserved.models import Rollup, ServedStatus
 
 CHANGELIST = "admin:served_unserved_servedstatus_changelist"
@@ -413,3 +413,264 @@ def test_rollup_search_matches_the_whole_code(
 
     assert response.status_code == 200
     assert list(response.context["cl"].result_list) == []
+
+
+def add_rollup(release: Release, state: State, level: str, code: str) -> Rollup:
+    """A rollup of ten locations of the state, in the release, level and area."""
+    return Rollup.objects.create(
+        release=release,
+        state=state,
+        level=level,
+        code=code,
+        locations=10,
+        any_100_20=8,
+        wired_100_20=4,
+        terrestrial_100_20=6,
+    )
+
+
+def rollup_queries(queries: CaptureQueriesContext) -> list[str]:
+    return [
+        query["sql"]
+        for query in queries.captured_queries
+        if '"served_unserved_rollup"' in query["sql"]
+    ]
+
+
+@pytest.fixture
+def j25_rollup(rollup: Rollup) -> Rollup:
+    """The rollup fixture's county, in the June 2025 release."""
+    j25 = Release.objects.create(
+        filing_period="J25", as_of=date(2025, 6, 30), processed_on=date(2026, 10, 1)
+    )
+    return add_rollup(j25, rollup.state, "county", "39049")
+
+
+# Release IDs follow load order, not date order: December 2026 is added last but is the newest.
+# The list follows the IDs, then the level, code and state, the order of the unique
+# (release, level, code, state) index (ADR 0024).
+def test_rollup_changelist_lists_by_release_id_level_code_then_state_id(
+    admin_client: Client, rollup: Rollup, j25_rollup: Rollup, wv_state: State
+) -> None:
+    cell_wv = add_rollup(rollup.release, wv_state, "h3_res8", "882a91ae3bfffff")
+    cell_oh = add_rollup(rollup.release, rollup.state, "h3_res8", "882a91ae3bfffff")
+    earlier = add_rollup(rollup.release, rollup.state, "county", "39035")
+    d26 = Release.objects.create(
+        filing_period="D26", as_of=date(2026, 12, 31), processed_on=date(2027, 9, 29)
+    )
+    newest = add_rollup(d26, rollup.state, "county", "39049")
+
+    response = admin_client.get(reverse(ROLLUPS))
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [
+        earlier,
+        rollup,
+        cell_oh,
+        cell_wv,
+        j25_rollup,
+        newest,
+    ]
+
+
+def test_rollup_changelist_page_is_ordered_like_the_unique_index(
+    admin_client: Client, rollup: Rollup
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(reverse(ROLLUPS))
+
+    page = next(sql for sql in rollup_queries(queries) if "ORDER BY" in sql)
+    order = re.search(r"ORDER BY (.*?)(?: LIMIT \d+)?$", page)
+    assert order is not None
+    assert order.group(1) == (
+        '"served_unserved_rollup"."release_id" ASC, '
+        '"served_unserved_rollup"."level" ASC, '
+        '"served_unserved_rollup"."code" ASC, '
+        '"served_unserved_rollup"."state_id" ASC'
+    )
+
+
+# No column sorts the list, since no index serves another order (ADR 0024).
+def test_rollup_changelist_columns_do_not_sort(admin_client: Client, rollup: Rollup) -> None:
+    response = admin_client.get(reverse(ROLLUPS))
+
+    assert response.status_code == 200
+    assert 'href="?o=' not in response.text
+
+
+# The count stops after the cap, and no filter counts its choices, even when asked to.
+@pytest.mark.parametrize("params", [{}, {"_facets": ""}])
+def test_rollup_changelist_reads_the_rollups_twice(
+    admin_client: Client, rollup: Rollup, params: dict[str, str]
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        response = admin_client.get(reverse(ROLLUPS), params)
+
+    assert response.status_code == 200
+    count, page = rollup_queries(queries)
+    assert count.startswith("SELECT COUNT(*) FROM (SELECT ")
+    assert count.endswith(" LIMIT 10001) subquery")
+    assert page.startswith('SELECT "served_unserved_rollup"."id", ')
+    assert "Show counts" not in response.text
+
+
+# The unique index leads with the release, so each query names the releases. Without them, a
+# filter on a level reads past every other level's rollups in each release (ADR 0024).
+@pytest.mark.parametrize(
+    "params",
+    [{}, {"level__exact": "county"}, {"q": "39049"}],
+    ids=["no-filter", "level", "search"],
+)
+@pytest.mark.usefixtures("j25_rollup")
+def test_rollup_changelist_names_the_releases(admin_client: Client, params: dict[str, str]) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        response = admin_client.get(reverse(ROLLUPS), params)
+
+    assert response.status_code == 200
+    reads = rollup_queries(queries)
+    # The page's count and its rows
+    assert len(reads) == 2
+    assert all('"served_unserved_rollup"."release_id" IN (' in sql for sql in reads)
+
+
+def test_rollup_changelist_without_releases_is_empty(admin_client: Client) -> None:
+    response = admin_client.get(reverse(ROLLUPS))
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == []
+    assert "0 rollups" in response.text
+
+
+def test_rollup_level_filter_lists_the_level_in_every_release(
+    admin_client: Client, rollup: Rollup, j25_rollup: Rollup
+) -> None:
+    add_rollup(rollup.release, rollup.state, "tract", "39049000110")
+
+    response = admin_client.get(reverse(ROLLUPS), {"level__exact": "county"})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [rollup, j25_rollup]
+
+
+@pytest.fixture
+def capped_rollups(monkeypatch: pytest.MonkeyPatch, rollup: Rollup) -> None:
+    """Three rollups, a cap of two and one rollup per page."""
+    monkeypatch.setattr(CappedCountPaginator, "cap", 2)
+    monkeypatch.setattr(RollupAdmin, "list_per_page", 1)
+    for code in ("39035", "39041"):
+        add_rollup(rollup.release, rollup.state, "county", code)
+
+
+@pytest.mark.usefixtures("capped_rollups")
+def test_rollup_count_stops_at_the_cap(admin_client: Client) -> None:
+    response = admin_client.get(reverse(ROLLUPS))
+
+    assert response.status_code == 200
+    assert response.context["cl"].result_count == 2
+    assert response.context["cl"].paginator.capped
+    assert "More than 2 rollups" in response.text
+    assert "More than 2 results" in response.text
+
+
+@pytest.mark.usefixtures("capped_rollups")
+def test_rollup_pages_up_to_the_cap_are_offered(admin_client: Client) -> None:
+    response = admin_client.get(reverse(ROLLUPS), {"p": "2"})
+
+    assert response.status_code == 200
+    assert [rollup.code for rollup in response.context["cl"].result_list] == ["39041"]
+
+
+@pytest.mark.usefixtures("capped_rollups")
+def test_rollup_pages_beyond_the_cap_are_refused(admin_client: Client) -> None:
+    response = admin_client.get(reverse(ROLLUPS), {"p": "3"})
+
+    assert response.status_code == 302
+    assert response["Location"].endswith("?e=1")
+
+
+def test_rollup_count_below_the_cap_is_exact(
+    admin_client: Client, rollup: Rollup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(CappedCountPaginator, "cap", 3)
+    monkeypatch.setattr(RollupAdmin, "list_per_page", 1)
+    for code in ("39035", "39041"):
+        add_rollup(rollup.release, rollup.state, "county", code)
+
+    response = admin_client.get(reverse(ROLLUPS))
+
+    assert response.status_code == 200
+    assert response.context["cl"].result_count == 3
+    assert not response.context["cl"].paginator.capped
+    assert "3 rollups" in response.text
+    assert "3 results" in response.text
+    assert "More than" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("level", "code"),
+    [
+        ("county", "39049"),
+        ("tract", "39049000110"),
+        ("block_group", "390490001101"),
+        ("block", "390490001101000"),
+        ("h3_res8", "882a91ae3bfffff"),
+        ("place", "3918000"),
+        ("county_subdivision", "3904918000"),
+    ],
+)
+def test_rollup_search_finds_a_code_at_each_level(
+    admin_client: Client, release: Release, state: State, level: str, code: str
+) -> None:
+    found = add_rollup(release, state, level, code)
+
+    response = admin_client.get(reverse(ROLLUPS), {"q": code})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [found]
+
+
+def test_rollup_search_finds_the_code_in_every_release(
+    admin_client: Client, rollup: Rollup, j25_rollup: Rollup
+) -> None:
+    add_rollup(rollup.release, rollup.state, "county", "39035")
+
+    response = admin_client.get(reverse(ROLLUPS), {"q": "39049"})
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [rollup, j25_rollup]
+    assert response.context["cl"].result_count == 2
+
+
+def test_rollup_search_within_one_release(
+    admin_client: Client, rollup: Rollup, j25_rollup: Rollup
+) -> None:
+    response = admin_client.get(
+        reverse(ROLLUPS), {"q": "39049", "release__id__exact": str(j25_rollup.release_id)}
+    )
+
+    assert response.status_code == 200
+    assert list(response.context["cl"].result_list) == [j25_rollup]
+
+
+# The search names each level whose codes have the term's form. Fifteen digits are a block GEOID,
+# and also have the form of an H3 cell index (ADR 0024).
+@pytest.mark.parametrize(
+    ("term", "levels"),
+    [
+        ("39049", "('county')"),
+        ("390490001101000", "('block', 'h3_res8')"),
+        ("882a91ae3bfffff", "('h3_res8')"),
+    ],
+    ids=["county", "block", "cell"],
+)
+@pytest.mark.usefixtures("rollup")
+def test_rollup_search_names_the_levels_of_the_terms_form(
+    admin_client: Client, term: str, levels: str
+) -> None:
+    with CaptureQueriesContext(connection) as queries:
+        admin_client.get(reverse(ROLLUPS), {"q": term})
+
+    reads = rollup_queries(queries)
+    # The page's count and its rows
+    assert len(reads) == 2
+    assert all(f'"served_unserved_rollup"."level" IN {levels}' in sql for sql in reads)

@@ -84,9 +84,24 @@ class RollupAdmin(ReadOnlyModelAdmin):
     )
     list_filter = ("level", "release")
     list_select_related = ("release",)
+    # The rollups are listed by release ID, level, code, then state ID (Rollup.Meta.ordering), the
+    # order of the unique (release, level, code, state) index. No column sorts the list, since no
+    # index serves any other order (ADR 0024).
+    sortable_by = ()
+    # The count stops after CappedCountPaginator.cap rollups, and the filters do not count their
+    # choices: either would read every rollup in the table or the release (ADRs 0022 and 0024).
+    paginator = CappedCountPaginator
+    show_facets = admin.ShowFacets.NEVER
     # search_fields makes the search box render; get_search_results does the search.
     search_fields = ("code",)
     search_help_text = "Area code: GEOID or H3 cell index"
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Rollup]:
+        # Naming every release lets the unique index go straight to a level, or a level and code,
+        # in each release. Without them, a filter on a level reads past the rollups of every level
+        # before it, in each release (ADR 0024).
+        releases = list(Release.objects.order_by().values_list("pk", flat=True))
+        return super().get_queryset(request).filter(release_id__in=releases)
 
     def get_search_results(
         self, request: HttpRequest, queryset: QuerySet[Rollup], search_term: str
@@ -94,4 +109,9 @@ class RollupAdmin(ReadOnlyModelAdmin):
         term = search_term.strip()
         if not term:
             return queryset, False
-        return queryset.filter(code=term), False
+        # Each level whose codes have the term's form, so that the unique index finds the code
+        # with one probe per release and level (ADR 0024)
+        levels = [level for level, key in AREA_KEYS.items() if re.fullmatch(key.pattern, term)]
+        if not levels:
+            return queryset.none(), False
+        return queryset.filter(level__in=levels, code=term), False
