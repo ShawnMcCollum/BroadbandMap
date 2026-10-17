@@ -43,7 +43,11 @@ export function useCountyGeometry(enabled: boolean, refreshVersion: number) {
   }, [enabled, key]);
   return {
     geometry,
-    state: settled?.key === key ? settled.state : { kind: 'loading' as const },
+    state: !enabled
+      ? { kind: 'idle' as const }
+      : settled?.key === key
+        ? settled.state
+        : { kind: 'loading' as const },
     retry: () => {
       setRetryId((n) => n + 1);
     },

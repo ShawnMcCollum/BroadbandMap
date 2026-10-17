@@ -1,7 +1,15 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../App';
-import { countyPage, d25, deferred, first, releasePage, rollupPage } from '../../test-fixtures/api';
+import {
+  countyPage,
+  d25,
+  j25,
+  deferred,
+  first,
+  releasePage,
+  rollupPage,
+} from '../../test-fixtures/api';
 import { maps, resetMapMock } from '../../test-fixtures/maplibre';
 vi.mock('maplibre-gl', async () => (await import('../../test-fixtures/maplibre')).maplibre);
 const response = (body: unknown, status = 200) =>
@@ -72,6 +80,49 @@ function setup(
   return { fetch, calls };
 }
 describe('county exploration', () => {
+  it('reports geometry loading only for enabled reads and retains loaded boundaries across uncovered releases', async () => {
+    const latest = { ...d25, states: [{ code: '54', name: 'West Virginia', abbreviation: 'WV' }] };
+    const pending = deferred<Response>();
+    let geometryCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = new URL(
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
+        );
+        if (url.pathname.endsWith('/releases/'))
+          return Promise.resolve(response(releasePage([latest, j25])));
+        if (url.pathname.includes('/geographies/')) {
+          geometryCalls++;
+          return pending.promise;
+        }
+        return Promise.resolve(response(rollupPage(j25)));
+      }),
+    );
+    render(<App />);
+    await screen.findByText('Ohio is not loaded for this release.');
+    expect(geometryCalls).toBe(0);
+    expect(screen.queryByText('Loading county boundaries…')).not.toBeInTheDocument();
+    expect(screen.queryByText('Refreshing county boundaries…')).not.toBeInTheDocument();
+    const release = screen.getByLabelText('FCC data release');
+    fireEvent.change(release, { target: { value: `${j25.as_of}|${j25.processed_on}` } });
+    await screen.findByText('Loading county boundaries…');
+    expect(geometryCalls).toBe(1);
+    await act(async () => {
+      pending.resolve(response(countyPage()));
+      await pending.promise;
+    });
+    await screen.findByRole('option', { name: 'Adams County (39001)' });
+    expect(screen.queryByText('Loading county boundaries…')).not.toBeInTheDocument();
+    fireEvent.change(release, { target: { value: `${latest.as_of}|${latest.processed_on}` } });
+    await screen.findByText('Ohio is not loaded for this release.');
+    expect(screen.queryByText('Loading county boundaries…')).not.toBeInTheDocument();
+    expect(screen.queryByText('Refreshing county boundaries…')).not.toBeInTheDocument();
+    fireEvent.change(release, { target: { value: `${j25.as_of}|${j25.processed_on}` } });
+    await screen.findByText('County summaries loaded: 1.');
+    expect(geometryCalls).toBe(1);
+    expect(maps).toHaveLength(1);
+  });
   it('keeps selector, table, detail and renderer aligned without new geometry or summary reads for county changes', async () => {
     const { calls } = setup();
     render(<App />);

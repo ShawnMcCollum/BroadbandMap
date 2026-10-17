@@ -545,3 +545,27 @@ Rationale and references:
   database, secret volumes and loaded source data were not modified. No backend
   or dashboard checks are needed for the approved frontend-only scope. Final
   whitespace, relative-link and changed-file review accompany the PR.
+
+
+## PR review follow-up on October 17, 2026
+
+The [P2 review finding](https://github.com/ShawnMcCollum/BroadbandMap/pull/88#discussion_r4300893087)
+identified a misleading boundary-loading status for an initially selected release
+without Ohio. Geometry loading was deliberately disabled, but the hook's default
+state was still loading. The return state now explicitly reports idle while
+disabled, keeping the loading indicator tied to an enabled read. Previously
+loaded geometry remains available for reuse.
+
+The regression in `CountyExplorer.test.tsx` first reproduced the false status
+without a geometry request. It then covers enabling an Ohio release with a
+pending read, completion, switching to an uncovered release, and returning to
+Ohio without a second geometry download or renderer recreation. This is a
+correction to the approved loading/coverage behavior within the existing files;
+no dependency, API or product-scope change is involved.
+
+Verification: the targeted test failed against the original hook, then Docker
+web `pnpm check` passed formatting, lint, strict TypeScript and 135 tests across
+11 files after the fix. `pnpm build` passed; the existing bundle-size warning
+remains (main JavaScript 1,293.20 kB / 360.09 kB gzip). No renderer behavior or
+browser dependency changed, so the DOM regression covers the reported status
+problem without repeating the full WebGL acceptance suite.
