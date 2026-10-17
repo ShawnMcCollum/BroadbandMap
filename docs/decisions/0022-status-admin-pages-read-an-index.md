@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-16
 - **Amends:** [0021](0021-indexes-only-where-queries-read.md), decision 7
-- **Amended by:** [0024](0024-rollup-admin-pages-read-an-index.md), which shares the two templates with the rollup admin
+- **Amended by:** [0024](0024-rollup-admin-pages-read-an-index.md), which shares the two templates with the rollup admin, and on 2026-10-17 by [#84](https://github.com/ShawnMcCollum/BroadbandMap/issues/84), which adds decisions 7 and 8
 - **Related:** [0013](0013-release-scoped-data-loads.md), [0019](0019-location-cursors.md), [#80](https://github.com/ShawnMcCollum/BroadbandMap/issues/80)
 
 ## Context
@@ -77,6 +77,8 @@ make wired service imply terrestrial, and terrestrial imply any.
      `admin/served_unserved/pagination.html` and
      `admin/served_unserved/search_form.html`. The rollup admin's count
      stops at the same cap.
+   - *Amended by decision 8:* the rows are counted in the list's order, not
+     unordered.
 4. **No column header sorts the list** (`sortable_by = ()`). No index serves
    another order.
 5. **The filters do not count their choices**
@@ -99,6 +101,62 @@ make wired service imply terrestrial, and terrestrial imply any.
      the inventory test lists it.
    - The other filters need no index. A page of statuses without wired or
      terrestrial service finds 100 within a few thousand index entries.
+7. **One filter of service categories replaces the three flag filters.**
+   *Added on 2026-10-17 ([#84](https://github.com/ShawnMcCollum/BroadbandMap/issues/84)).*
+   The check constraints nest the flags, so a status falls in exactly one of
+   four categories. The filter "100/20 Mbps service" offers them:
+
+   | Choice | `service=` | Selected by | December 2025 |
+   |---|---|---|---|
+   | Wired | `wired` | `wired_100_20` | 4,244,855 |
+   | Terrestrial, not wired | `terrestrial` | `terrestrial_100_20 AND NOT wired_100_20` | 148,197 |
+   | Any technology, not terrestrial | `any` | `any_100_20 AND NOT terrestrial_100_20` | 149,166 |
+   | Not served | `none` | `NOT any_100_20` | 132 |
+
+   - The three yes/no filters it replaces also offered combinations the
+     constraints forbid, such as wired service without terrestrial. Those
+     matched nothing, but read every status: 917 ms.
+   - Each category is selected by the fewest flags that set it apart. The
+     constraints make that the same statuses as naming all three flags, but
+     the planner estimates a condition on several flags as if they were
+     independent. With all three named, it expected 9,602 June 2025 statuses
+     with service by any technology but not terrestrial, against 176,259.
+     Expecting fewer than the count's 10,001, it sorted every match for the
+     count: 303 ms, against 10 ms.
+   - "Not served" is `NOT any_100_20`, the predicate of
+     `servedstatus_not_served` (decision 6), which serves both its queries.
+   - The choices are named as the map names the flags: "Wired", "Any
+     technology" and "Terrestrial". Their values are the API's `flag`
+     values, and `none`.
+   - An unknown value redirects to the list, as an invalid value of a flag
+     filter did.
+8. **The count reads the rows in the list's order.**
+   *Added on 2026-10-17 ([#84](https://github.com/ShawnMcCollum/BroadbandMap/issues/84)).*
+   Decision 3 counted unordered, so that the database could stop at the
+   first rows it found. For a filter on a flag, the planner then chose a
+   sequential scan, expecting matches throughout the table. The table holds
+   the releases in the order they were loaded, so a count within June 2025
+   read all of December 2025's statuses first: 384.33 ms for wired service,
+   and 147.88 ms and 138.61 ms for the two middle categories. In the list's
+   order, the count reads the index that serves the page, from the release's
+   first entry, and stops after 10,001 matches: at most 15.78 ms in either
+   release.
+   - Where the unordered scan found its matches at once, at the start of
+     the table, the ordered count is a few milliseconds slower. For the two
+     middle categories, with no release or December 2025 chosen, it took
+     12.44–15.78 ms, against 6.85–8.28 ms.
+   - A sequential scan usually starts where the last scan of the table
+     stopped (`synchronize_seqscans`). An unordered count therefore took
+     anywhere between its times at the start and at the end of the table,
+     and the worst case grew with each state and release loaded.
+   - `CappedCountPaginator` serves both admins, so the rollup admin counts
+     in its list's order too, through its unique index
+     ([0024](0024-rollup-admin-pages-read-an-index.md)). Its capped counts
+     took 2.63–2.90 ms, against 2.06–2.75 ms.
+   - A search's count now sorts the statuses it found: the block search's
+     took 0.72 ms against 0.39 ms, and the H3 cell search's 1.41 ms
+     against 0.59 ms.
+   - A sort typed into the URL (`?o=`) now orders the count as well.
 
 ## Measurements
 
@@ -136,6 +194,36 @@ technology, first page:**
 | 39163, the most in this list (12) | 2.17 ms | 1.45 ms |
 
 Migrating the loaded database added the index in 0.482 s.
+
+**Service categories ([#84](https://github.com/ShawnMcCollum/BroadbandMap/issues/84)):**
+measured on 2026-10-17 on the same data. Each sequential scan started at
+the table's first page (`synchronize_seqscans` off), so that the runs
+repeat: December 2025 lies at the start of the table and June 2025 after
+it. "Before" is the three flag filters, with the combination that selects
+each category, and the unordered count. "After" is the service filter and
+the ordered count. This project's web development server was using about 9%
+of a core during the runs, so render times differ by about ten milliseconds
+from run to run.
+
+| Page | Render before | Render after | Count before | Count after |
+|---|---|---|---|---|
+| No filter, wired | 50 ms | 57 ms | 3.07 ms | 3.65 ms |
+| December 2025, wired | 56 ms | 59 ms | 3.17 ms | 3.54 ms |
+| June 2025, wired | 421 ms | 53 ms | 384.33 ms | 4.16 ms |
+| No filter, terrestrial, not wired | 58 ms | 60 ms | 8.28 ms | 12.56 ms |
+| December 2025, terrestrial, not wired | 72 ms | 60 ms | 7.48 ms | 15.78 ms |
+| June 2025, terrestrial, not wired | 201 ms | 67 ms | 147.88 ms | 11.85 ms |
+| No filter, any technology, not terrestrial | 56 ms | 58 ms | 8.03 ms | 13.65 ms |
+| December 2025, any technology, not terrestrial | 58 ms | 69 ms | 6.85 ms | 12.44 ms |
+| June 2025, any technology, not terrestrial | 191 ms | 63 ms | 138.61 ms | 10.94 ms |
+| No filter, not served | 46 ms | 55 ms | 0.10 ms | 0.10 ms |
+| December 2025, not served | 50 ms | 52 ms | 0.10 ms | 0.05 ms |
+| June 2025, not served | 54 ms | 47 ms | 0.09 ms | 0.08 ms |
+| Wired but not terrestrial (offered before, typed into the URL after) | 917 ms | 1.6 s | 689.75 ms | 1,493.15 ms |
+
+Every page query of the twelve category rows read the unique index, or
+`servedstatus_not_served` for "Not served", in at most 0.24 ms.
+Page 100 of the two middle categories took 15.22 ms and 15.05 ms.
 
 ## Alternatives considered
 
@@ -177,7 +265,19 @@ Migrating the loaded database added the index in 0.482 s.
 - **Negative:** A filter on a combination that the check constraints forbid,
   for example wired service without terrestrial, still reads every status:
   816 ms.
+  - *Amended by decision 7:* the admin no longer offers such a combination.
+    Typed into the URL, it is still applied, and its ordered count reads the
+    whole unique index: 1.6 s.
 - **Negative:** A sort typed into the URL (`?o=`) is still applied, and
   sorts every status.
 - **Negative:** Every data load maintains one more index, with about 150
   entries per Ohio release.
+- **Positive (decisions 7 and 8):** The filters offer only the categories
+  the data holds. Each category's page took 47–69 ms in either release, and
+  its cost no longer grows with the releases stored before the one chosen.
+- **Negative (decision 7):** A filter on a flag typed into the URL, such as
+  `?any_100_20__exact=0`, is still applied, as a typed sort is.
+- **Negative (decision 8):** A filter that matches fewer than 10,001 rows,
+  with no index of its own, makes the count read the list's index to its
+  end. None of the admins' filters is one; only a URL typed by hand reaches
+  one.

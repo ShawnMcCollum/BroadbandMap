@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-16
 - **Amends:** [0022](0022-status-admin-pages-read-an-index.md), decision 3
+- **Amended by:** [0022](0022-status-admin-pages-read-an-index.md), decision 8, which counts the rollups in the list's order
 - **Related:** [0017](0017-national-releases-loaded-by-state.md), [0021](0021-indexes-only-where-queries-read.md), [0023](0023-status-admin-searches-blocks-and-cells.md), [#83](https://github.com/ShawnMcCollum/BroadbandMap/issues/83)
 
 ## Context
@@ -74,6 +75,9 @@ names, from `block` to `tract`.
      app, so both of this app's admins use them, and no other app's admin
      does. This amends [0022](0022-status-admin-pages-read-an-index.md),
      decision 3, which made them per-model copies.
+   - *Amended by [0022](0022-status-admin-pages-read-an-index.md),
+     decision 8:* the count reads the rollups in the list's order, through
+     the unique index.
 5. **No column header sorts the list** (`sortable_by = ()`), and **the
    filters do not count their choices** (`show_facets = ShowFacets.NEVER`).
 6. **No index is added or dropped**
