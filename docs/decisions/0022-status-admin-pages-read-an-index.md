@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-10-16
 - **Amends:** [0021](0021-indexes-only-where-queries-read.md), decision 7
+- **Amended by:** [0024](0024-rollup-admin-pages-read-an-index.md), which shares the two templates with the rollup admin
 - **Related:** [0013](0013-release-scoped-data-loads.md), [0019](0019-location-cursors.md), [#80](https://github.com/ShawnMcCollum/BroadbandMap/issues/80)
 
 ## Context
@@ -71,6 +72,11 @@ make wired service imply terrestrial, and terrestrial imply any.
    - The cap must exceed the admin's `list_per_page` (100) and
      `list_max_show_all` (200). The admin shows a list it does not page in
      full.
+   - *Amended by [0024](0024-rollup-admin-pages-read-an-index.md):* the
+     templates are shared by both of the app's admins, at
+     `admin/served_unserved/pagination.html` and
+     `admin/served_unserved/search_form.html`. The rollup admin's count
+     stops at the same cap.
 4. **No column header sorts the list** (`sortable_by = ()`). No index serves
    another order.
 5. **The filters do not count their choices**
