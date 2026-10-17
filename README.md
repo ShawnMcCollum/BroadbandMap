@@ -424,6 +424,7 @@ Architectural and scope decisions are recorded in
 - [0021 — An index only where a query reads through it](docs/decisions/0021-indexes-only-where-queries-read.md)
 - [0022 — Status admin pages read an index](docs/decisions/0022-status-admin-pages-read-an-index.md)
 - [0023 — Status admin searches a block or a cell in every release](docs/decisions/0023-status-admin-searches-blocks-and-cells.md)
+- [0024 — Rollup admin pages read an index](docs/decisions/0024-rollup-admin-pages-read-an-index.md)
 
 The adopted REST API conventions and implementation guidance are in
 [docs/api-guidelines.md](docs/api-guidelines.md).
