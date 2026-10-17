@@ -43,6 +43,23 @@ export type RollupPage = {
   summary_coverage: SummaryCoverage;
   threshold: { download_mbps: number; upload_mbps: number };
 };
+export type CountySummaries = Omit<RollupPage, 'next' | 'previous'>;
+export type CountyFeature = {
+  type: 'Feature';
+  id: string;
+  properties: { code: string; name: string };
+  geometry: { type: 'MultiPolygon'; coordinates: [number, number][][][] };
+};
+export type CountyCollection = {
+  type: 'FeatureCollection';
+  features: CountyFeature[];
+  state: string;
+  boundary_vintage: number;
+  count: number;
+};
+export type CountyPage = CountyCollection & { next: string | null; previous: string | null };
+export type LoadState<T> =
+  { kind: 'loading' } | { kind: 'ready'; data: T } | { kind: 'failed'; error: ApiFailure };
 export type ProblemField = { pointer: string; code: string; message: string };
 export type Problem = {
   type: string;

@@ -190,3 +190,133 @@ footer p {
     scroll-behavior: auto !important;
   }
 }
+
+.county-explorer {
+  margin-top: 1.5rem;
+}
+.county-selector {
+  max-width: 30rem;
+  margin-bottom: 1rem;
+}
+.county-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+.county-detail {
+  background: #fff;
+  border: 1px solid #b8c3cc;
+  border-radius: 4px;
+  padding: 1rem;
+  min-width: 0;
+}
+.county-detail h2 {
+  margin-top: 0;
+}
+.county-detail dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.county-detail dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.county-map-panel {
+  min-width: 0;
+}
+.county-map {
+  height: 30rem;
+  width: 100%;
+  border: 1px solid #667887;
+}
+.county-map[hidden],
+.county-explorer[hidden] {
+  display: none;
+}
+.fit-ohio {
+  margin-bottom: 0.5rem;
+}
+.county-legend h2 {
+  font-size: 1.125rem;
+}
+.county-legend ul {
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  list-style: none;
+}
+.county-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.county-legend li > span {
+  display: inline-block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid #667887;
+}
+.missing-swatch {
+  background: repeating-linear-gradient(135deg, #e5e7eb, #e5e7eb 4px, #40566b 4px, #40566b 6px);
+}
+.county-preview {
+  min-height: 3rem;
+}
+.county-table-scroll {
+  overflow-x: auto;
+  margin-top: 1.5rem;
+}
+.county-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.county-table-scroll caption {
+  text-align: left;
+  font-weight: 650;
+  margin-bottom: 0.5rem;
+}
+.county-table-scroll th,
+.county-table-scroll td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid #b8c3cc;
+}
+.county-table-scroll small {
+  display: block;
+  font-weight: 400;
+}
+.county-table-scroll tr[aria-selected='true'] {
+  outline: 2px solid #172b3a;
+  outline-offset: -2px;
+}
+.county-table-scroll button {
+  min-width: 10rem;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+@media (min-width: 64rem) {
+  .county-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .county-detail {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .county-map-panel {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}
+@media (max-width: 48rem) {
+  .county-map {
+    height: 20rem;
+  }
+}

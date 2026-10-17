@@ -9,6 +9,27 @@ Newest entries first.
 
 ---
 
+## 2026-10-16 — Ohio county map and accessible detail
+
+- Issue #73 replaces the one-row readiness probe with complete county summaries
+  and a tile-free MapLibre map. The existing selection owner drives map, county
+  selector, table and detail; changing a flag updates colors without downloading
+  the 3.34 MB geometry again or rebuilding the WebGL map.
+- Missing summaries remain separate from observed zero service. A selected
+  missing county gets one exact-code diagnosis. If that later read now has an
+  observation, an explicit Refresh updates every view together instead of mixing
+  new detail counts into an older map/table collection.
+- Real screenshots caught two gaps that DOM mocks cannot prove: narrow geographic
+  pan limits cropped Ohio in a wide viewport, and ID-based worker filters omitted
+  hatch/selection features. Fitting the viewport before constraining it and
+  filtering on the string county-code property resolved them. Promoted GEOIDs
+  remain feature-state keys. Actual hatch pixels were checked afterward.
+- The [approved plan and verification](plans/issue-73-county-map.md) records 134
+  passing tests, the Docker build, real 88-county Edge rendering, unchanged
+  worker/geometry counts across filters, keyboard/narrow layout checks, context
+  loss recovery and browser-local failure simulations. The MapLibre bundle-size
+  warning remains visible as a measured future optimization opportunity.
+
 ## 2026-10-16 — React shell and release selection
 
 - Issue #72 replaces the React health-only landing page with the approved shell,

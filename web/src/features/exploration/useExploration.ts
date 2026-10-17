@@ -3,11 +3,11 @@ import {
   ApiFailure,
   type Flag,
   type ReleaseSummary,
-  type RollupPage,
+  type CountySummaries,
   type Selection,
 } from '../../api/types';
 import { fetchReleases } from '../../api/releases';
-import { fetchCountySummary, matchesSummary } from '../../api/rollups';
+import { fetchCountySummaries } from '../../api/rollups';
 
 type ExplorationState = {
   releases: ReleaseSummary[];
@@ -19,13 +19,13 @@ type ExplorationAction =
   | { type: 'catalog-success'; releases: ReleaseSummary[] }
   | { type: 'catalog-error'; error: ApiFailure }
   | { type: 'select-release'; release: ReleaseSummary }
-  | { type: 'select-flag'; flag: Flag };
-type Readiness = {
+  | { type: 'select-flag'; flag: Flag }
+  | { type: 'select-county'; county: string | null };
+export type Summaries = {
   key: string;
   catalogKey: string;
   kind: 'loading' | 'ready' | 'empty' | 'ohio-absent' | 'failed';
-  summaryCoverage?: RollupPage['summary_coverage'];
-  boundaryVintage?: number | null;
+  data?: CountySummaries;
   loadedStates?: string[];
   error?: ApiFailure;
 };
@@ -77,7 +77,12 @@ function reducer(state: ExplorationState, action: ExplorationAction): Exploratio
   else
     return {
       ...state,
-      selection: state.selection ? { ...state.selection, flag: action.flag } : null,
+      selection: state.selection
+        ? {
+            ...state.selection,
+            ...(action.type === 'select-flag' ? { flag: action.flag } : { county: action.county }),
+          }
+        : null,
     };
 }
 
@@ -89,12 +94,13 @@ export function useExploration(active: boolean, activationKey: number) {
   });
   const [refreshId, setRefreshId] = useState(0);
   const [settledCatalogKey, setSettledCatalogKey] = useState<string | null>(null);
-  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [summaries, setSummaries] = useState<Summaries | null>(null);
+  const [summaryRetry, setSummaryRetry] = useState(0);
   const [settled404, setSettled404] = useState<{ key: string; error: ApiFailure } | null>(null);
   const catalogGeneration = useRef(0);
   const summaryGeneration = useRef(0);
   const refresh = useCallback(() => {
-    setReadiness(null);
+    setSummaries(null);
     setSettled404(null);
     setRefreshId((n) => n + 1);
   }, []);
@@ -141,35 +147,30 @@ export function useExploration(active: boolean, activationKey: number) {
       ) ?? null)
     : null;
   const hasOhio = Boolean(selectedRelease?.states.some((s) => s.code === '39'));
-  const currentKey = selectedRelease && selection ? keyOf(selectedRelease, selection.flag) : '';
+  const flag = selection?.flag ?? 'wired';
+  const currentKey = selectedRelease && selection ? keyOf(selectedRelease, flag) : '';
   useEffect(() => {
     const generation = summaryGeneration.current + 1;
     summaryGeneration.current = generation;
-    if (!active || catalogLoading || !selectedRelease || !hasOhio || !selection) return;
+    if (!active || catalogLoading || !selectedRelease || !hasOhio) return;
     const controller = new AbortController();
-    const key = keyOf(selectedRelease, selection.flag);
+    const key = keyOf(selectedRelease, flag);
     if (settled404?.key === key)
       return () => {
         controller.abort();
         summaryGeneration.current = summaryGeneration.current + 1;
       };
-    const catalogKey = requestKey;
-    void fetchCountySummary(selectedRelease, selection.flag, controller.signal)
+    const catalogKey = `${requestKey}:${String(summaryRetry)}`;
+    void fetchCountySummaries(selectedRelease, flag, controller.signal)
       .then((page) => {
         if (controller.signal.aborted || generation !== summaryGeneration.current) return;
-        if (!matchesSummary(page, selectedRelease, selection.flag))
-          throw new ApiFailure(
-            'unexpected',
-            'The county summary response did not match the selected release and flag.',
-          );
         const loadedStates = page.release.states.map((state) => `${state.name} (${state.code})`);
         const ohioLoaded = page.release.states.some((state) => state.code === '39');
-        setReadiness({
+        setSummaries({
           kind: !ohioLoaded ? 'ohio-absent' : page.results.length ? 'ready' : 'empty',
           key,
           catalogKey,
-          summaryCoverage: page.summary_coverage,
-          boundaryVintage: page.boundary_vintage,
+          data: page,
           loadedStates,
         });
       })
@@ -189,7 +190,7 @@ export function useExploration(active: boolean, activationKey: number) {
           setRefreshId((n) => n + 1);
           return;
         }
-        setReadiness({ kind: 'failed', key, catalogKey, error: failure });
+        setSummaries({ kind: 'failed', key, catalogKey, error: failure });
       });
     return () => {
       controller.abort();
@@ -201,35 +202,39 @@ export function useExploration(active: boolean, activationKey: number) {
     currentKey,
     settled404,
     selectedRelease,
-    selection,
+    flag,
     hasOhio,
     requestKey,
+    summaryRetry,
   ]);
 
   const selectRelease = (release: ReleaseSummary) => {
-    setReadiness(null);
+    setSummaries(null);
     setSettled404(null);
     dispatch({ type: 'select-release', release });
   };
   const selectFlag = (flag: Flag) => {
-    setReadiness(null);
+    setSummaries(null);
     setSettled404(null);
     dispatch({ type: 'select-flag', flag });
   };
-  let currentReadiness: Readiness | null = null;
+  let currentSummaries: Summaries | null = null;
   if (active && !catalogLoading && currentKey) {
     // A fresh 404 must take precedence over a result retained from an earlier visit.
     if (settled404?.key === currentKey) {
-      currentReadiness = {
+      currentSummaries = {
         kind: 'failed',
         key: currentKey,
         catalogKey: requestKey,
         error: settled404.error,
       };
-    } else if (readiness?.key === currentKey && readiness.catalogKey === requestKey) {
-      currentReadiness = readiness;
+    } else if (
+      summaries?.key === currentKey &&
+      summaries.catalogKey === `${requestKey}:${String(summaryRetry)}`
+    ) {
+      currentSummaries = summaries;
     } else {
-      currentReadiness = { kind: 'loading', key: currentKey, catalogKey: requestKey };
+      currentSummaries = { kind: 'loading', key: currentKey, catalogKey: requestKey };
     }
   }
   return {
@@ -238,9 +243,22 @@ export function useExploration(active: boolean, activationKey: number) {
     selectedRelease,
     hasOhio,
     selectionRequired: state.selectionRequired,
-    readiness: currentReadiness,
+    summaries: currentSummaries,
     selectRelease,
     selectFlag,
     refresh,
+    refreshVersion: refreshId,
+    summaryVersion: `${requestKey}:${String(summaryRetry)}`,
+    retrySummaries: () => {
+      setSummaries(null);
+      setSettled404(null);
+      setSummaryRetry((n) => n + 1);
+    },
+    selectCounty: useCallback((county: string | null) => {
+      dispatch({ type: 'select-county', county });
+    }, []),
+    rediscover: useCallback(() => {
+      setRefreshId((n) => n + 1);
+    }, []),
   };
 }
